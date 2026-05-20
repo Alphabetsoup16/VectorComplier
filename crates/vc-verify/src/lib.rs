@@ -65,7 +65,7 @@ pub fn check_wasm_policy(wasm: &[u8], policy: WasmPolicy) -> Result<()> {
                 anyhow::bail!("wasm component model sections not allowed");
             }
             Payload::ImportSection(imports) if !policy.allow_imports => {
-                for group in imports {
+                if let Some(group) = imports.into_iter().next() {
                     match group? {
                         Imports::Single(_, import) => {
                             anyhow::bail!(

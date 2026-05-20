@@ -49,7 +49,9 @@ mod tests {
         let refined = refiner
             .refine(&initial, &spec, 50_000, 256)
             .expect("should find add program");
-        crate::check::module_satisfies_spec(&refined, &spec, 50_000)
+        let mut cache = crate::check::ModuleSpecCache::new();
+        cache
+            .satisfies(&refined, &spec, 50_000, None)
             .expect("refined module passes spec");
         assert!(
             refined.func.body.windows(2).any(|w| {

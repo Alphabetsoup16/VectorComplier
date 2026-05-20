@@ -61,8 +61,3 @@ impl Default for ModuleSpecCache {
         Self::new()
     }
 }
-
-/// Lower `module`, run every spec case under `fuel`, and return `Ok(())` only if all match.
-pub fn module_satisfies_spec(module: &Module, spec: &Spec, fuel: u64) -> Result<()> {
-    ModuleSpecCache::new().satisfies(module, spec, fuel, None)
-}

@@ -624,11 +624,7 @@ fn run_eval(
 ) -> Result<()> {
     let suite = load_vectorbench_suite(suite_path)?;
     let selected: Vec<&VectorbenchTask> = if let Some(id) = task_filter {
-        let found: Vec<_> = suite
-            .tasks
-            .iter()
-            .filter(|t| t.task_id == id)
-            .collect();
+        let found: Vec<_> = suite.tasks.iter().filter(|t| t.task_id == id).collect();
         anyhow::ensure!(
             !found.is_empty(),
             "suite `{}` has no task_id `{id}`",
@@ -1255,13 +1251,7 @@ fn main() -> Result<()> {
             task,
             json,
             guest_wall,
-        } => run_eval(
-            &input,
-            &suite,
-            task.as_deref(),
-            guest_wall.wall_ms,
-            json,
-        )?,
+        } => run_eval(&input, &suite, task.as_deref(), guest_wall.wall_ms, json)?,
         Command::Check {
             input,
             spec,
