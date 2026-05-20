@@ -1,0 +1,22 @@
+[package]
+name = "vectorcompiler-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+rust-version = "1.91"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vc-ir = { path = "../crates/vc-ir" }
+
+[[bin]]
+name = "vc_ir_parse_validate"
+path = "fuzz_targets/vc_ir_parse_validate.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

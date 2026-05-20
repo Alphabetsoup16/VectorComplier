@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Matches rust-toolchain.toml (channel + components) in-repo.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo home
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt
+        run: cargo fmt --all --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      - name: vectorc benchmark smoke (all manifests)
+        run: |
+          shopt -s nullglob
+          manifests=(benchmarks/manifests/*.json)
+          if [ ${#manifests[@]} -eq 0 ]; then
+            echo "No benchmark manifests found under benchmarks/manifests/"
+            exit 1
+          fi
+          for manifest in "${manifests[@]}"; do
+            echo "==> $manifest"
+            cargo run --locked -p vc-cli --quiet -- bench -m "$manifest"
+          done
+
+      - name: vectorc check (in-process spec)
+        run: |
+          cargo run --locked -p vc-cli --quiet -- check \
+            -i benchmarks/programs/add.vcir \
+            -m benchmarks/manifests/add.json \
+            --json
+
+      - name: vectorc eval (VectorBench v0)
+        run: |
+          cargo run --locked -p vc-cli --quiet -- eval \
+            -i benchmarks/programs/add.vcir \
+            --suite benchmarks/vectorbench_v0/suite.json \
+            --task add_i32 --json
+          cargo run --locked -p vc-cli --quiet -- eval \
+            -i benchmarks/programs/mul.vcir \
+            --suite benchmarks/vectorbench_v0/suite.json \
+            --task mul_i32 --json
+
+      - name: training slice v0 (Z_BUILD verify + batch eval)
+        run: |
+          python3 scripts/gen_training_rows.py --verify-only
+          bash scripts/verify-dataset-manifest.sh \
+            benchmarks/datasets/training_slice_v0 \
+            benchmarks/datasets/training_slice_v0/manifest.json
+          bash scripts/batch-eval-training-shard.sh \
+            benchmarks/datasets/training_slice_v0 \
+            --out /tmp/training-shard-eval.json
+
+      - name: eval decode scoreboard (golden, add manifest)
+        run: |
+          VECTORC='cargo run --locked -p vc-cli --quiet --' \
+            bash scripts/eval-decode-scoreboard.sh benchmarks/manifests/add.json
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo home
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # Advisories: workspace pins wasmtime 43.x; audit fails CI on new findings.
+      - name: cargo audit
+        run: cargo audit
+
+  json-schema:
+    name: JSON Schema fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install check-jsonschema
+        run: pip install check-jsonschema
+
+      - name: Validate schemas
+        run: bash scripts/validate-schemas.sh
+
+      - name: Verify dataset manifest checksums (fixture slice v0)
+        run: bash scripts/verify-dataset-manifest.sh benchmarks benchmarks/datasets/fixture_slice_v0/manifest.json
+
+  vc-bridge-onnx:
+    name: vc-bridge (features onnx)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo home
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo test vc-bridge onnx
+        run: cargo test -p vc-bridge --features onnx --locked
+
+      - name: cargo test vc-cli onnx fixture
+        run: cargo test -p vc-cli --features onnx --locked --test onnx_fixture_decode
+
+      - name: eval decode scoreboard (onnx, add manifest)
+        run: |
+          DECODER=onnx \
+            ONNX_MODEL=benchmarks/fixtures/decoder_identity_z.onnx \
+            VECTORC='cargo run --locked -p vc-cli --features onnx --quiet --' \
+            bash scripts/eval-decode-scoreboard.sh benchmarks/manifests/add.json
+
+      - name: eval decode scoreboard (onnx, mul manifest, z_switch)
+        run: |
+          DECODER=onnx \
+            ONNX_MODEL=benchmarks/fixtures/decoder_z_switch.onnx \
+            Z_JSON=benchmarks/fixtures/z_neg_z0.json \
+            VECTORC='cargo run --locked -p vc-cli --features onnx --quiet --' \
+            bash scripts/eval-decode-scoreboard.sh benchmarks/manifests/mul.json
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+
+      - name: Cache cargo home
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deny
+        # Pin to a release compatible with MSRV 1.91 (newer cargo-deny may require newer rustc).
+        run: cargo install cargo-deny --locked --version 0.18.3
+
+      # Licenses + duplicate crate bans (not RustSec advisories — use `cargo audit` job).
+      - name: cargo deny check (licenses + bans)
+        run: cargo deny check licenses bans
+
+  fuzz-build:
+    name: cargo fuzz build (vc_ir_parse_validate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nightly (cargo-fuzz)
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: nightly
+          components: rust-src
+
+      - name: Cache cargo home
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Build fuzz target
+        working-directory: fuzz
+        run: cargo fuzz build vc_ir_parse_validate

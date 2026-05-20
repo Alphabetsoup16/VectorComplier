@@ -1,0 +1,43 @@
+[package]
+name = "vc-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "vectorc CLI — compile Program IR to Wasm and run benchmarks"
+
+[[bin]]
+name = "vectorc"
+path = "src/main.rs"
+
+[[test]]
+name = "onnx_fixture_decode"
+path = "tests/onnx_fixture_decode.rs"
+required-features = ["onnx"]
+
+[dependencies]
+vc-bridge = { path = "../vc-bridge" }
+vc-ir = { path = "../vc-ir" }
+vc-lower-wasm = { path = "../vc-lower-wasm" }
+vc-refine = { path = "../vc-refine" }
+vc-verify = { path = "../vc-verify" }
+anyhow = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[features]
+default = []
+# ONNX Runtime decoder (`ort` pulls native libs via download-binaries — network on first build).
+onnx = ["vc-bridge/onnx"]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+vc-ir = { path = "../vc-ir" }

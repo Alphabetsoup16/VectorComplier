@@ -1,0 +1,23 @@
+{
+  "program_ir_version": 2,
+  "export_name": "run",
+  "func": {
+    "sig": {
+      "params": ["f32", "f32"],
+      "results": ["f32"]
+    },
+    "locals": [],
+    "body": [
+      { "op": "local_get", "index": 0 },
+      { "op": "local_get", "index": 1 },
+      { "op": "f32_gt" },
+      {
+        "op": "if_else",
+        "result": "f32",
+        "then_body": [{ "op": "local_get", "index": 0 }],
+        "else_body": [{ "op": "local_get", "index": 1 }]
+      },
+      { "op": "return" }
+    ]
+  }
+}

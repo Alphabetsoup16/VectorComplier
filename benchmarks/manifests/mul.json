@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "program_path": "programs/mul.vcir",
+  "export": "run",
+  "fuel": 100000,
+  "cases": [
+    { "args": [6, 7], "expect_i32": 42 },
+    { "args": [3, -4], "expect_i32": -12 },
+    { "args": [0, 99], "expect_i32": 0 },
+    { "args": [-2, -5], "expect_i32": 10 }
+  ]
+}

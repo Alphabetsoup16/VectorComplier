@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "program_path": "programs/add.vcir",
+  "export": "run",
+  "fuel": 100000,
+  "cases": [
+    { "args": [1, 2], "expect_i32": 3 },
+    { "args": [40, 2], "expect_i32": 42 },
+    { "args": [-1, 1], "expect_i32": 0 }
+  ]
+}

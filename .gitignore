@@ -1,0 +1,16 @@
+/target
+.venv/
+__pycache__/
+*.pyc
+**/target/
+# Local dev hygiene (clean.sh logs); never commit.
+.local/
+**/*.rs.bk
+.DS_Store
+.idea
+.vscode
+*.wasm
+*.o
+/dist
+.env
+.env.*

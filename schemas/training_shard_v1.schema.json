@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vectorcompiler.dev/schemas/training_shard_v1.schema.json",
+  "title": "Training shard v1",
+  "description": "Index for training_shard_v1: one JSONL row (training_row_v1) plus optional training_index on dataset manifests. .vcir artifacts use dataset_manifest_v1.schema.json.",
+  "$defs": {
+    "training_row": { "$ref": "training_row_v1.schema.json" },
+    "training_manifest_index": { "$ref": "training_manifest_index_v1.schema.json" }
+  }
+}

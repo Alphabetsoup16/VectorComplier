@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vectorcompiler.dev/schemas/program_ir_v1.schema.json",
+  "title": "Program IR v1",
+  "description": "JSON shape for vc_ir::Module (serde). Semantic rules (stack, return-last) are enforced by validate_module, not this schema alone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["program_ir_version", "export_name", "func"],
+  "properties": {
+    "program_ir_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version; must match PROGRAM_IR_VERSION in vc-ir."
+    },
+    "export_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Exported Wasm function name (single export in v1)."
+    },
+    "func": { "$ref": "#/$defs/func" }
+  },
+  "$defs": {
+    "val_type": {
+      "type": "string",
+      "enum": ["i32", "i64"]
+    },
+    "func_sig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["params", "results"],
+      "properties": {
+        "params": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "const": "i32" },
+          "description": "v1: all parameters must be i32."
+        },
+        "results": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "const": "i32" },
+          "description": "v1: exactly one i32 result."
+        }
+      }
+    },
+    "func": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sig", "locals", "body"],
+      "properties": {
+        "sig": { "$ref": "#/$defs/func_sig" },
+        "locals": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/val_type" },
+          "description": "Locals declared after parameters (Wasm ordering)."
+        },
+        "body": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/instr" }
+        }
+      }
+    },
+    "instr": {
+      "oneOf": [
+        { "$ref": "#/$defs/instr_i32_const" },
+        { "$ref": "#/$defs/instr_i64_const" },
+        { "$ref": "#/$defs/instr_i32_add" },
+        { "$ref": "#/$defs/instr_i32_sub" },
+        { "$ref": "#/$defs/instr_i32_mul" },
+        { "$ref": "#/$defs/instr_i32_xor" },
+        { "$ref": "#/$defs/instr_drop" },
+        { "$ref": "#/$defs/instr_local_get" },
+        { "$ref": "#/$defs/instr_local_set" },
+        { "$ref": "#/$defs/instr_return" }
+      ]
+    },
+    "instr_i32_const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "value"],
+      "properties": {
+        "op": { "const": "i32_const" },
+        "value": { "type": "integer" }
+      }
+    },
+    "instr_i64_const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "value"],
+      "properties": {
+        "op": { "const": "i64_const" },
+        "value": { "type": "integer" }
+      }
+    },
+    "instr_i32_add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_add" } }
+    },
+    "instr_i32_sub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_sub" } }
+    },
+    "instr_i32_mul": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_mul" } }
+    },
+    "instr_i32_xor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_xor" } }
+    },
+    "instr_drop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "drop" } }
+    },
+    "instr_local_get": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "index"],
+      "properties": {
+        "op": { "const": "local_get" },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "instr_local_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "index"],
+      "properties": {
+        "op": { "const": "local_set" },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "instr_return": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "return" } }
+    }
+  }
+}

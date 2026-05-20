@@ -1,0 +1,297 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vectorcompiler.dev/schemas/program_ir_v2.schema.json",
+  "title": "Program IR v2",
+  "description": "JSON shape for vc_ir::Module (serde). Float types, comparisons, and structured control (`block`, `if_else`). Tier-1 caps: instruction lists max 4096 items (`MAX_BODY_INSTRS`); control nesting max depth 32 (`MAX_CONTROL_DEPTH` / maxControlNestingDepth). Stack discipline and Wasm semantics are enforced by validate_module after parse.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["program_ir_version", "export_name", "func"],
+  "properties": {
+    "program_ir_version": {
+      "type": "integer",
+      "const": 2,
+      "description": "Schema version; must match PROGRAM_IR_VERSION in vc-ir."
+    },
+    "export_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Exported Wasm function name (single export)."
+    },
+    "func": { "$ref": "#/$defs/func" }
+  },
+  "$defs": {
+    "val_type": {
+      "type": "string",
+      "enum": ["i32", "i64", "f32", "f64"]
+    },
+    "func_sig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["params", "results"],
+      "properties": {
+        "params": {
+          "type": "array",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/val_type" },
+          "description": "Parameter types (Wasm scalar types)."
+        },
+        "results": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/val_type" },
+          "description": "Exactly one scalar result."
+        }
+      }
+    },
+    "func": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sig", "locals", "body"],
+      "properties": {
+        "sig": { "$ref": "#/$defs/func_sig" },
+        "locals": {
+          "type": "array",
+          "maxItems": 64,
+          "items": { "$ref": "#/$defs/val_type" },
+          "description": "Locals declared after parameters (Wasm ordering)."
+        },
+        "body": { "$ref": "#/$defs/instr_list_nonempty" }
+      }
+    },
+    "instr_list": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": { "$ref": "#/$defs/instr" },
+      "description": "Instruction sequence (nested block/if_else bodies share this cap)."
+    },
+    "instr_list_nonempty": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": { "$ref": "#/$defs/instr" },
+      "description": "Non-empty top-level function body."
+    },
+    "instr": {
+      "oneOf": [
+        { "$ref": "#/$defs/instr_i32_const" },
+        { "$ref": "#/$defs/instr_i64_const" },
+        { "$ref": "#/$defs/instr_f32_const" },
+        { "$ref": "#/$defs/instr_f64_const" },
+        { "$ref": "#/$defs/instr_i32_add" },
+        { "$ref": "#/$defs/instr_i32_sub" },
+        { "$ref": "#/$defs/instr_i32_mul" },
+        { "$ref": "#/$defs/instr_i32_xor" },
+        { "$ref": "#/$defs/instr_i32_eq" },
+        { "$ref": "#/$defs/instr_i32_eqz" },
+        { "$ref": "#/$defs/instr_i32_trunc_f32_s" },
+        { "$ref": "#/$defs/instr_f32_convert_i32_s" },
+        { "$ref": "#/$defs/instr_f32_add" },
+        { "$ref": "#/$defs/instr_f32_sub" },
+        { "$ref": "#/$defs/instr_f32_mul" },
+        { "$ref": "#/$defs/instr_f32_div" },
+        { "$ref": "#/$defs/instr_f32_gt" },
+        { "$ref": "#/$defs/instr_f64_add" },
+        { "$ref": "#/$defs/instr_f64_sub" },
+        { "$ref": "#/$defs/instr_f64_mul" },
+        { "$ref": "#/$defs/instr_f64_div" },
+        { "$ref": "#/$defs/instr_drop" },
+        { "$ref": "#/$defs/instr_local_get" },
+        { "$ref": "#/$defs/instr_local_set" },
+        { "$ref": "#/$defs/instr_block" },
+        { "$ref": "#/$defs/instr_if_else" },
+        { "$ref": "#/$defs/instr_return" }
+      ]
+    },
+    "instr_i32_const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "value"],
+      "properties": {
+        "op": { "const": "i32_const" },
+        "value": { "type": "integer" }
+      }
+    },
+    "instr_i64_const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "value"],
+      "properties": {
+        "op": { "const": "i64_const" },
+        "value": { "type": "integer" }
+      }
+    },
+    "instr_f32_const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "value"],
+      "properties": {
+        "op": { "const": "f32_const" },
+        "value": { "type": "number" }
+      }
+    },
+    "instr_f64_const": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "value"],
+      "properties": {
+        "op": { "const": "f64_const" },
+        "value": { "type": "number" }
+      }
+    },
+    "instr_i32_add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_add" } }
+    },
+    "instr_i32_sub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_sub" } }
+    },
+    "instr_i32_mul": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_mul" } }
+    },
+    "instr_i32_xor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_xor" } }
+    },
+    "instr_i32_eq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_eq" } }
+    },
+    "instr_i32_eqz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_eqz" } }
+    },
+    "instr_i32_trunc_f32_s": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "i32_trunc_f32_s" } }
+    },
+    "instr_f32_convert_i32_s": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f32_convert_i32_s" } }
+    },
+    "instr_f32_add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f32_add" } }
+    },
+    "instr_f32_sub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f32_sub" } }
+    },
+    "instr_f32_mul": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f32_mul" } }
+    },
+    "instr_f32_div": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f32_div" } }
+    },
+    "instr_f32_gt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f32_gt" } }
+    },
+    "instr_f64_add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f64_add" } }
+    },
+    "instr_f64_sub": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f64_sub" } }
+    },
+    "instr_f64_mul": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f64_mul" } }
+    },
+    "instr_f64_div": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "f64_div" } }
+    },
+    "instr_drop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "drop" } }
+    },
+    "instr_local_get": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "index"],
+      "properties": {
+        "op": { "const": "local_get" },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "instr_local_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "index"],
+      "properties": {
+        "op": { "const": "local_set" },
+        "index": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "instr_block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "body"],
+      "properties": {
+        "op": { "const": "block" },
+        "result": { "$ref": "#/$defs/val_type" },
+        "body": { "$ref": "#/$defs/instr_list" }
+      }
+    },
+    "instr_if_else": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "then_body", "else_body"],
+      "properties": {
+        "op": { "const": "if_else" },
+        "result": { "$ref": "#/$defs/val_type" },
+        "then_body": { "$ref": "#/$defs/instr_list" },
+        "else_body": { "$ref": "#/$defs/instr_list" }
+      }
+    },
+    "instr_return": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op"],
+      "properties": { "op": { "const": "return" } }
+    }
+  }
+}

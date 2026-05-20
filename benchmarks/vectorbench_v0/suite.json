@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "suite_id": "vectorbench_v0",
+  "description": "Frozen i32 behavioral tasks for decoder training validation. Authority: vectorc eval + validate_module + fuel-metered Wasm.",
+  "program_ir_version": 2,
+  "tasks": [
+    {
+      "task_id": "add_i32",
+      "manifest": "benchmarks/manifests/add.json",
+      "program_glob": "benchmarks/programs/add.vcir",
+      "notes": "Two-parameter i32 add; 4 I/O cases."
+    },
+    {
+      "task_id": "mul_i32",
+      "manifest": "benchmarks/manifests/mul.json",
+      "program_glob": "benchmarks/programs/mul.vcir",
+      "notes": "Two-parameter i32 multiply; 4 I/O cases."
+    },
+    {
+      "task_id": "const42_i32",
+      "manifest": "benchmarks/manifests/const42.json",
+      "program_glob": "benchmarks/programs/const42.vcir",
+      "notes": "Nullary i32 constant 42."
+    }
+  ]
+}

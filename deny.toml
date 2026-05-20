@@ -1,0 +1,31 @@
+# cargo-deny — https://embarkstudios.github.io/cargo-deny/
+# CI runs `cargo deny check licenses bans` (advisory DB uses CVSS fields newer tooling parses;
+# advisories are covered separately by the `cargo audit` job).
+
+[graph]
+all-features = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[licenses]
+version = 2
+# Broad allow-list for typical crates.io Rust deps; tighten per org policy if needed.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "Unlicense",
+    "BSL-1.0",
+    "MPL-2.0",
+    "OpenSSL",
+    "NCSA",
+    "0BSD",
+]

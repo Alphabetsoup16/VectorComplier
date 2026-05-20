@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "program_path": "programs/const42.vcir",
+  "export": "run",
+  "fuel": 100000,
+  "cases": [
+    { "args": [], "expect_i32": 42 }
+  ]
+}

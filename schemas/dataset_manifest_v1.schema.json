@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vectorcompiler.dev/schemas/dataset_manifest_v1.schema.json",
+  "title": "Dataset manifest v1 (training / evaluation)",
+  "description": "Human and machine index for a frozen dataset of Program IR programs and related artifacts. Authority for correctness remains validate_module + execution; this manifest is for reproducibility and licensing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "dataset_id",
+    "dataset_version",
+    "program_ir_version",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "dataset_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for the dataset family (not necessarily unique per version)."
+    },
+    "dataset_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version string for this freeze (e.g. semver or dated tag)."
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX identifier or short license label for the bundle."
+    },
+    "program_ir_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Expected program_ir_version for every listed .vcir artifact."
+    },
+    "notes": {
+      "type": "string",
+      "description": "Non-authoritative prose (provenance, generator commit, etc.)."
+    },
+    "splits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "train": { "$ref": "#/$defs/split_info" },
+        "val": { "$ref": "#/$defs/split_info" },
+        "test": { "$ref": "#/$defs/split_info" }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/artifact_entry" }
+    }
+  },
+  "$defs": {
+    "split_info": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "relative_prefix": {
+          "type": "string",
+          "description": "Directory prefix under the dataset root for this split."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional declared row/program count."
+        }
+      }
+    },
+    "artifact_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "sha256"],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path relative to dataset root (POSIX slashes)."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "Lowercase SHA-256 hex of exact file bytes."
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Optional declared size in bytes."
+        },
+        "media_type": {
+          "type": "string",
+          "description": "Optional hint, e.g. application/json for .vcir."
+        }
+      }
+    }
+  }
+}

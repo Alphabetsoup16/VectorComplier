@@ -1,0 +1,17 @@
+{
+  "program_ir_version": 2,
+  "export_name": "run",
+  "func": {
+    "sig": {
+      "params": ["i32", "i32"],
+      "results": ["i32"]
+    },
+    "locals": [],
+    "body": [
+      { "op": "local_get", "index": 0 },
+      { "op": "local_get", "index": 1 },
+      { "op": "i32_add" },
+      { "op": "return" }
+    ]
+  }
+}

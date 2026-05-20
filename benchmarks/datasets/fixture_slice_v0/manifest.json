@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "dataset_id": "vectorcompiler-fixture-slice",
+  "dataset_version": "v0",
+  "license": "MIT OR Apache-2.0",
+  "program_ir_version": 2,
+  "notes": "Frozen slice of canonical Program IR fixtures; regenerate with scripts/generate_program_ir_fixtures.py.",
+  "splits": {
+    "train": {
+      "relative_prefix": "programs/",
+      "count": 4
+    }
+  },
+  "artifacts": [
+    {
+      "relative_path": "programs/add.vcir",
+      "sha256": "591405feffa8b4ede724ae2bc03cbd4e3a031a87793537bda5c2b5491a2caada",
+      "bytes": 320,
+      "media_type": "application/json"
+    },
+    {
+      "relative_path": "programs/const42.vcir",
+      "sha256": "8a8faf6108f79068a8d3c7a9c2054f679a3db5ecd910b512df4a3fd296dcc15c",
+      "bytes": 241,
+      "media_type": "application/json"
+    },
+    {
+      "relative_path": "programs/max_f32.vcir",
+      "sha256": "40bf54710118f5a1c135904f0317058a559a11be39bf79b2ece2f197fda42ec3",
+      "bytes": 501,
+      "media_type": "application/json"
+    },
+    {
+      "relative_path": "programs/mul.vcir",
+      "sha256": "729a9cd334f2f742ac43b8e74fa88fb9ee5cf0ef198eb4a604663950dc8871e8",
+      "bytes": 320,
+      "media_type": "application/json"
+    }
+  ]
+}

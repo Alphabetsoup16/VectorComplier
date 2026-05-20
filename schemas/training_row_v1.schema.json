@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Training row v1 (JSONL line)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "program_id",
+    "task_id",
+    "split",
+    "z",
+    "vcir_path",
+    "manifest"
+  ],
+  "properties": {
+    "program_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable sample key; drives deterministic z via Z_BUILD (gen_training_rows.py)."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "VectorBench v0 task_id (e.g. add_i32)."
+    },
+    "split": {
+      "type": "string",
+      "enum": ["train", "val", "test"]
+    },
+    "z": {
+      "type": "array",
+      "minItems": 256,
+      "maxItems": 256,
+      "items": { "type": "number" },
+      "description": "f32 latent vector (EMBEDDING_DIM 256)."
+    },
+    "vcir_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Path to .vcir relative to shard root."
+    },
+    "manifest": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Manifest path relative to shard root (typically manifest.json)."
+    }
+  }
+}

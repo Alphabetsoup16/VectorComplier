@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Training manifest index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rows_jsonl"],
+  "properties": {
+    "rows_jsonl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "sha256"],
+      "properties": {
+        "relative_path": {
+          "type": "string",
+          "const": "rows.jsonl"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "row_count": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}
