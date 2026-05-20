@@ -137,7 +137,7 @@ def build_manifest(
         "schema_version": 1,
         "dataset_id": "vectorcompiler-training-slice",
         "dataset_version": "v0",
-        "license": "MIT OR Apache-2.0",
+        "license": "Apache-2.0",
         "program_ir_version": 2,
         "notes": (
             "Frozen training slice for VectorBench v0 canonical i32 tasks; "

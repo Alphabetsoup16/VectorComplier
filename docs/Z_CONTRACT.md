@@ -1,6 +1,6 @@
 # Latent vector contract (`z`)
 
-Single place for **machine-facing** expectations on the continuous input to [`LatentDecoder::decode_z`](https://github.com/spencerwolf/VectorComplier/tree/main/crates/vc-bridge/src/decoder.rs). ONNX input naming is frozen as **`z`** (see [DECODER_ROADMAP.md](DECODER_ROADMAP.md)); output tensors remain training-defined until mapped in `vc-bridge`.
+Single place for **machine-facing** expectations on the continuous input to [`LatentDecoder::decode_z`](https://github.com/Alphabetsoup16/VectorComplier/tree/main/crates/vc-bridge/src/decoder.rs). ONNX input naming is frozen as **`z`** (see [DECODER_ROADMAP.md](DECODER_ROADMAP.md)); output tensors remain training-defined until mapped in `vc-bridge`.
 
 **Companion:** [IR_VERSIONING.md](IR_VERSIONING.md) (Program IR pin), [TRUST_AND_CANONICAL_ARTIFACTS.md](TRUST_AND_CANONICAL_ARTIFACTS.md) (digests and manifests).
 

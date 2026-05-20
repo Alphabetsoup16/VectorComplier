@@ -1,16 +1,34 @@
 /target
+**/target/
 .venv/
 __pycache__/
 *.pyc
-**/target/
+.pytest_cache/
+.mypy_cache/
+
 # Local dev hygiene (clean.sh logs); never commit.
 .local/
 **/*.rs.bk
 .DS_Store
-.idea
-.vscode
+.idea/
+.vscode/
+.cursor/
+
+# Build artifacts & caches
 *.wasm
 *.o
 /dist
+*.log
+/tmp/
+checkpoints/
+exports/
+
+# Secrets & local env
 .env
 .env.*
+!.env.example
+
+# OS / editor
+Thumbs.db
+*.swp
+*~

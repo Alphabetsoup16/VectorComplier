@@ -36,6 +36,6 @@ for m in benchmarks/manifests/*.json; do cargo run --locked -q -p vc-cli -- benc
 - **`scripts/validate-schemas.sh`** — Program IR fixtures + **`{cases}`** slices from bench manifests vs **`schemas/`** (requires **`pip install check-jsonschema`** and **`jq`**).
 - **`cargo deny check licenses bans`** — licenses + duplicate crate bans (pinned **`cargo-deny 0.18.3`** in CI for MSRV **1.91**); advisories use **`cargo audit`**.
 
-## Audit agents
+## Review scope
 
-Seven scoped passes covered: security, IR/schema alignment, refine/CLI, documentation drift, test matrix, dependency hygiene, `vc-bridge` ONNX feature.
+Scoped passes covered: security, IR/schema alignment, refine/CLI, documentation drift, test matrix, dependency hygiene, and `vc-bridge` ONNX integration.

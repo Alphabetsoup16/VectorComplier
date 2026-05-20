@@ -184,7 +184,7 @@ def build_manifest(artifacts: list[dict[str, Any]]) -> dict[str, Any]:
         "schema_version": 1,
         "dataset_id": "vectorcompiler-fixture-slice",
         "dataset_version": "v0",
-        "license": "MIT OR Apache-2.0",
+        "license": "Apache-2.0",
         "program_ir_version": PROGRAM_IR_VERSION,
         "notes": (
             "Frozen slice of canonical Program IR fixtures; "

@@ -1,24 +1,58 @@
 # VectorCompiler
 
-<!-- Badges (replace placeholders when publishing):
-[![CI](https://img.shields.io/badge/CI-placeholder-lightgrey)](.)
+[![CI](https://github.com/Alphabetsoup16/VectorComplier/actions/workflows/ci.yml/badge.svg)](https://github.com/Alphabetsoup16/VectorComplier/actions/workflows/ci.yml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.91-orange)](rust-toolchain.toml)
-[![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
--->
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**VectorCompiler** is a research-oriented pipeline for turning **latent representations** into **executable programs**: continuous vectors → a verifiable **Program IR** → **WebAssembly** modules you can run under strict, deterministic limits.
+## Why this matters
 
-- **Today:** latent JSON (`decode-z` via `vc-bridge`), Program IR as `.vcir`, validate → Wasm → Wasmtime with fuel; **`vectorc digest` / `inspect` / `compile --print-digest`** for artifact pinning ([trust model](docs/TRUST_AND_CANONICAL_ARTIFACTS.md)); strict Wasm preflight; optional **`--features onnx`** loads ONNX (`OrtLatentDecoder`) with frozen **`z`** + **`program_ir_json`** contract (see [DECODER_ROADMAP.md](docs/DECODER_ROADMAP.md)).
-- **Training oracle:** [`vectorc eval`](docs/VECTORBENCH_V0.md) scores `.vcir` against [VectorBench v0](benchmarks/vectorbench_v0/suite.json) (`execute_rate`, `validate_rate`, …).
-- **Next:** trained decoder weights and dataset-scale eval beyond checked-in fixtures ([LATENT_FIRST_TRAINING_PLAN.md](docs/LATENT_FIRST_TRAINING_PLAN.md)).
+Modern ML systems—agents, multimodal models, retrieval stacks—do most of their reasoning in **high-dimensional latent space**. That representation is powerful for similarity, planning, and composition, but it is **not executable**. Today we often bridge the gap by asking a model to **write English or Python**, then hoping a separate compiler or runtime accepts the result. That path is lossy, hard to verify, and difficult to bound when code runs on real hardware.
 
-📖 **Detailed documentation:** [docs/](docs/)
+**VectorCompiler** asks a different question: *what if the only mandatory bridge from latent thought to the machine is a **narrow, typed, checkable program artifact**?*
+
+We treat **Program IR** as the semantic waist: a small, Wasm-aligned stack language you can diff, validate, and reason about before any bytes run. A learned **decoder** maps a fixed latent vector `z` into that IR; a deterministic **lowerer** emits import-free WebAssembly; a **sandboxed executor** (Wasmtime + fuel + policy) answers whether the program actually behaves as specified. Training is scored on **execution-grounded metrics**—validate, compile, execute—not on how plausible the JSON looks.
+
+That design matters for three reasons:
+
+1. **Trust** — Invalid programs fail closed at validation; runnable modules are capped by explicit host policy instead of ad-hoc FFI.
+2. **Portability** — Wasm is the portable object file; the same artifact can be audited, benchmarked, and shipped across hosts without re-deriving native codegen for every model revision.
+3. **Research honesty** — The thesis is testable: a latent→IR head must beat baselines on **behavior** under VectorBench, not on token perplexity alone.
+
+Natural language and source text remain useful for humans and for ecosystems that want diffs—but they are **optional layers**, not the only path from representation to execution. VectorCompiler is the infrastructure for the path that is **verifiable by construction**.
+
+```mermaid
+flowchart LR
+  Z["Latent z"] --> D["Decoder"]
+  D --> IR["Program IR v2\n(validated)"]
+  IR --> W["Wasm"]
+  W --> E["Fuel-bounded\nexecution"]
+  E --> M["Behavioral metrics"]
+```
 
 ---
 
-## Vision: latent → IR → Wasm
+## What this repository is
 
-High-dimensional signals (embeddings, generative latents, learned codecs) are not directly executable. VectorCompiler treats **Program IR v2** as the stable, human-auditable midpoint: a small Wasm-aligned stack machine with structured control (`block` / `if_else`). From there, lowering to Wasm gives you a **portable artifact** that runs the same logic across hosts and can be bounded by engine-level limits instead of trusting native code generation on every platform.
+**VectorCompiler** is a Rust workspace that implements the full **latent → IR → Wasm → verify** pipeline:
+
+| Stage | Crate | Role |
+|-------|-------|------|
+| Semantic contract | `vc-ir` | Program IR v2, JSON parse, static validation |
+| Lowering | `vc-lower-wasm` | Validated IR → Wasm MVP (`wasm-encoder`) |
+| Execution | `vc-verify` | Wasmtime sandbox, fuel, Wasm policy |
+| Search (baseline) | `vc-refine` | Spec-driven IR mutation (`vectorc synthesize`) |
+| Latent bridge | `vc-bridge` | `LatentDecoder` — stub, golden, optional ONNX |
+| CLI | `vc-cli` | `vectorc` — decode, compile, eval, run, bench |
+
+**Today:** frozen `z` contract, ONNX fixtures, VectorBench v0 oracle (`vectorc eval`), training shard v0, and CI/preflight parity.
+
+**Next:** trained decoder weights and dataset-scale eval in a **separate Python training repo**; this repository stays the **ground-truth compiler and oracle** ([LATENT_FIRST_TRAINING_PLAN.md](docs/LATENT_FIRST_TRAINING_PLAN.md)).
+
+📖 **Documentation:** [docs/](docs/) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+## Pipeline
 
 ```mermaid
 flowchart LR
@@ -33,7 +67,7 @@ flowchart LR
 
 ---
 
-## Repository layout (high level)
+## Repository layout
 
 | Crate | Role | README |
 |-------|------|--------|
@@ -52,7 +86,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for boundaries and extension po
 
 - **Rust toolchain:** `1.91.0` (see [`rust-toolchain.toml`](rust-toolchain.toml))
 
-**Disk hygiene:** debug builds are large (~1 GiB `target/` is normal). Use `./scripts/target-size.sh` and `./scripts/clean.sh` (wraps built-in `cargo clean`) — see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+**Disk hygiene:** debug builds are large (~1 GiB `target/` is normal). Use `./scripts/target-size.sh` and `./scripts/clean.sh` — see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+**Preflight before training or large evals:**
+
+```bash
+bash scripts/preflight.sh
+```
 
 ---
 
@@ -62,11 +102,11 @@ From the repository root:
 
 ### Latent vector → Program IR (optional Wasm)
 
-`decode-z` reads a JSON file that is either a bare `[f32, …]` or `{"z":[…]}`. Length must match [`EMBEDDING_DIM`](crates/vc-bridge/src/decoder.rs) (**256** today).
+`decode-z` reads JSON as `[f32, …]` or `{"z":[…]}`. Length must match [`EMBEDDING_DIM`](crates/vc-bridge/src/decoder.rs) (**256**).
 
 - **`--decoder stub`** (default): fails until a learned decoder is wired.
-- **`--decoder golden`**: emits deterministic add-two-i32 IR for pipeline tests (see `benchmarks/fixtures/z_zeros.json`).
-- **`--features onnx`** on `vc-cli`: adds **`--decoder onnx`** and **`--onnx-model`**; ONNX loads, validates **`z`** + **`program_ir_json`**, runs inference, parses embedded Program IR JSON (checked-in fixture matches golden add IR).
+- **`--decoder golden`**: deterministic add-two-i32 IR for pipeline tests.
+- **`--features onnx`**: **`--decoder onnx`** + **`--onnx-model`** (frozen `z` + `program_ir_json` contract).
 
 ```bash
 cargo run -p vc-cli -- decode-z \
@@ -83,90 +123,33 @@ cargo run -p vc-cli -- run -i /tmp/from_z.wasm -e run -f 100000 -a 40,2 --expect
 ```bash
 cargo run -p vc-cli -- compile \
   -i benchmarks/programs/add.vcir \
-  -o /tmp/add.wasm
-```
-
-Fingerprint emitted Wasm (SHA-256 hex), pin tooling reproducibility ([docs/TRUST_AND_CANONICAL_ARTIFACTS.md](docs/TRUST_AND_CANONICAL_ARTIFACTS.md)):
-
-```bash
-cargo run -p vc-cli -- compile \
-  -i benchmarks/programs/add.vcir \
   -o /tmp/add.wasm \
   --print-digest
 ```
 
-Other bounded-file tooling:
-
-```bash
-cargo run -p vc-cli -- digest -i benchmarks/programs/add.vcir
-cargo run -p vc-cli -- inspect -i benchmarks/programs/add.vcir
-```
-
-### Run a Wasm module (fuel-limited, single `i32` return)
-
-```bash
-cargo run -p vc-cli -- run \
-  -i /tmp/add.wasm \
-  -e run \
-  -f 100000 \
-  -a 40,2
-```
-
-Optional: fail the process if the result is not as expected:
+### Run, bench, synthesize
 
 ```bash
 cargo run -p vc-cli -- run -i /tmp/add.wasm -e run -f 100000 -a 40,2 --expect 42
-```
-
-### Bench: manifest-driven compile + many cases
-
-`bench` reads a JSON manifest, compiles the referenced `.vcir` in-process, and checks each case with the same fuel budget.
-
-```bash
 cargo run -p vc-cli -- bench -m benchmarks/manifests/add.json
+cargo run -p vc-cli -- synthesize --spec benchmarks/manifests/add.json --steps 500 -o /tmp/synth.vcir
 ```
 
-### Benchmark manifest example
-
-Manifests use `schema_version: 1`. **`program_path` is relative to the `benchmarks/` directory** (the parent directory of `manifests/`), must not contain `..`, and is canonicalized so it cannot escape outside `benchmarks/`.
-
-Example:
-
-```json
-{
-  "schema_version": 1,
-  "program_path": "programs/add.vcir",
-  "export": "run",
-  "fuel": 100000,
-  "cases": [
-    { "args": [1, 2], "expect_i32": 3 },
-    { "args": [40, 2], "expect_i32": 42 },
-    { "args": [-1, 1], "expect_i32": 0 }
-  ]
-}
-```
-
-Sample programs live under [`benchmarks/programs/`](benchmarks/programs/).
-
-### Synthesize: search for IR that matches a behavioral spec
-
-`synthesize` runs random mutations over Program IR and keeps candidates that pass `validate_module` and satisfy every case in a spec (via Wasm execution). This is a **heuristic baseline**, not a trained latent decoder.
+### Training oracle
 
 ```bash
-cargo run -p vc-cli -- synthesize \
-  --spec benchmarks/manifests/add.json \
-  --steps 500 \
-  --refiner-seed 0 \
-  -o /tmp/synthesized.vcir
+cargo run -p vc-cli -- eval \
+  -i benchmarks/programs/add.vcir \
+  --suite benchmarks/vectorbench_v0/suite.json \
+  --task add_i32 \
+  --json
 ```
 
-- **`--spec`**: JSON with a `cases` array (see [`schemas/bench_spec_v1.schema.json`](schemas/bench_spec_v1.schema.json)). Full bench manifests also work at runtime; fields like `program_path` and `fuel` are ignored except `cases`.
-- **`--seed`**: optional initial `.vcir`; default is `benchmarks/programs/add.vcir` or a built-in add template.
-- **`--refiner-seed`**: RNG for the refiner (separate from any future IR seeding).
+See [docs/VECTORBENCH_V0.md](docs/VECTORBENCH_V0.md) and [docs/TRAINING_ON_MAC.md](docs/TRAINING_ON_MAC.md).
 
 ---
 
-## Architecture (diagram)
+## Architecture
 
 ```mermaid
 flowchart TB
@@ -195,7 +178,7 @@ flowchart TB
 
 ## Security
 
-Executing **any** Wasm (including modules produced here) is a trust and resource-boundary problem. VectorCompiler defaults to **minimal host surface** (no WASI, no imported functions in emitted modules). See [docs/SECURITY.md](docs/SECURITY.md) and the adversarial pass in [docs/ADVERSARIAL_AUDIT.md](docs/ADVERSARIAL_AUDIT.md).
+Executing Wasm is a trust and resource-boundary problem. VectorCompiler defaults to **minimal host surface** (no WASI, no imports in emitted modules). See [docs/SECURITY.md](docs/SECURITY.md) and [.github/SECURITY.md](.github/SECURITY.md).
 
 ---
 
@@ -203,29 +186,18 @@ Executing **any** Wasm (including modules produced here) is a trust and resource
 
 | Document | Contents |
 |----------|----------|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crates, boundaries, trait extension points, Wasm-first rationale |
-| [docs/TARGETS.md](docs/TARGETS.md) | Apple Silicon, Intel macOS, RISC-V Linux, Wasm portability |
-| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, fuel, WASI posture, supply chain |
-| [docs/ADVERSARIAL_AUDIT.md](docs/ADVERSARIAL_AUDIT.md) | Abuse cases, mitigations, residual risk |
-| [docs/FULL_LINE_AUDIT.md](docs/FULL_LINE_AUDIT.md) | Line-by-line adversarial read of all Rust sources |
-| [docs/DECODER_ROADMAP.md](docs/DECODER_ROADMAP.md) | Latent → IR / ONNX integration outline (`vc-bridge`) |
-| [docs/Z_CONTRACT.md](docs/Z_CONTRACT.md) | Frozen expectations for latent vector `z` (length, dtype, JSON envelope) |
-| [docs/Z_BUILD.md](docs/Z_BUILD.md) | v0 deterministic `program_id` → `z` recipe (must match `gen_training_rows.py`) |
-| [docs/TRAINING_DATA.md](docs/TRAINING_DATA.md) | Training shard layout (`rows.jsonl`, splits, manifests, oracle wiring) |
-| [docs/DEBUGGING_DECODE.md](docs/DEBUGGING_DECODE.md) | Failure dumps when `execute_rate` stalls |
-| [docs/IR_VERSIONING.md](docs/IR_VERSIONING.md) | Program IR version pins, schemas, bump checklist |
-| [docs/TRUST_AND_CANONICAL_ARTIFACTS.md](docs/TRUST_AND_CANONICAL_ARTIFACTS.md) | Authority boundaries, `digest` / `inspect`, dataset manifests |
-| [docs/LATENT_FIRST_TRAINING_PLAN.md](docs/LATENT_FIRST_TRAINING_PLAN.md) | End-to-end plan: contracts, data, training, ONNX, eval, agent workstreams |
-| [docs/TRAINING_ON_MAC.md](docs/TRAINING_ON_MAC.md) | Economical `z`→IR decoder training (MacBook Air + optional cloud GPU) |
-| [docs/PREFLIGHT_BEFORE_TRAINING.md](docs/PREFLIGHT_BEFORE_TRAINING.md) | Gate: correctness checklist + what to optimize before training |
-| [docs/VECTORBENCH_V0.md](docs/VECTORBENCH_V0.md) | Frozen benchmark suite + `vectorc eval` metrics for training |
-| [docs/CONDITIONS_FOR_OBSOLESCENCE.md](docs/CONDITIONS_FOR_OBSOLESCENCE.md) | Theory: what “beyond source code” requires, paths, scope honesty vs v1 |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Toolchain, `cargo clean`, scripts, standard checks |
-| [docs/VETTING_REPORT.md](docs/VETTING_REPORT.md) | Full-repo audit summary and open risks |
-| [schemas/](schemas/) | JSON Schema for Program IR v2, bench specs, dataset manifests |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crates, boundaries, extension points |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, fuel, supply chain |
+| [docs/DECODER_ROADMAP.md](docs/DECODER_ROADMAP.md) | Latent → IR / ONNX contract |
+| [docs/Z_CONTRACT.md](docs/Z_CONTRACT.md) | Frozen `z` layout |
+| [docs/VECTORBENCH_V0.md](docs/VECTORBENCH_V0.md) | Benchmark suite + `vectorc eval` |
+| [docs/PREFLIGHT_BEFORE_TRAINING.md](docs/PREFLIGHT_BEFORE_TRAINING.md) | Gate before decoder training |
+| [docs/LATENT_FIRST_TRAINING_PLAN.md](docs/LATENT_FIRST_TRAINING_PLAN.md) | End-to-end training roadmap |
+| [docs/TRAINING_ON_MAC.md](docs/TRAINING_ON_MAC.md) | Economical training on Apple Silicon |
+| [schemas/](schemas/) | JSON Schema for IR, benches, datasets |
 
 ---
 
 ## License
 
-Licensed under the terms in the workspace `Cargo.toml` (MIT OR Apache-2.0).
+Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE) for attribution.

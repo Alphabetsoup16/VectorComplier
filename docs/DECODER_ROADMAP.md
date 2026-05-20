@@ -4,7 +4,7 @@ This document anchors the **latent vector → [`vc_ir::Module`]** bridge without
 
 For the full phased plan (data, training, ONNX, evaluation, parallel agent streams), see [**LATENT_FIRST_TRAINING_PLAN.md**](LATENT_FIRST_TRAINING_PLAN.md).
 
-[`vc_ir::Module`]: https://github.com/spencerwolf/VectorComplier/tree/main/crates/vc-ir
+[`vc_ir::Module`]: https://github.com/Alphabetsoup16/VectorComplier/tree/main/crates/vc-ir
 
 ## Tensor layout contract (`z`)
 
@@ -18,12 +18,12 @@ When ONNX inference is wired, `ort` tensors should match this contract (shape `[
 
 ## ONNX I/O contract (Phase 0 freeze — align exports here)
 
-Training exports should match what [`OrtLatentDecoder`](https://github.com/spencerwolf/VectorComplier/tree/main/crates/vc-bridge/src/onnx.rs) validates at load time.
+Training exports should match what [`OrtLatentDecoder`](https://github.com/Alphabetsoup16/VectorComplier/tree/main/crates/vc-bridge/src/onnx.rs) validates at load time.
 
 | Role | **Frozen identifier (today)** | dtype | Notes |
 |------|-------------------------------|-------|-------|
 | Input | **`z`** (`DECODER_ONNX_INPUT_Z`) | `f32` tensor | Element count **`EXPECTED_Z_LEN`** (256); Rust feeds shape **`[1, D]`** at inference. Dynamic axes in the ONNX model (`-1`) are OK — the concrete tensor must match `D`. |
-| Output | **`program_ir_json`** (`DECODER_ONNX_OUTPUT_IR_JSON`) | `uint8` tensor | Rank‑1 tensor: raw bytes of **UTF‑8 JSON** for exactly one [`Module`] (same JSON shape as a `.vcir` file). Parsed via [`Module::parse_json_slice`](https://github.com/spencerwolf/VectorComplier/tree/main/crates/vc-ir) then **`validate_module`**. Additional float/aux outputs are ignored by `OrtLatentDecoder` (e.g. demo **`y`** tensor). |
+| Output | **`program_ir_json`** (`DECODER_ONNX_OUTPUT_IR_JSON`) | `uint8` tensor | Rank‑1 tensor: raw bytes of **UTF‑8 JSON** for exactly one [`Module`] (same JSON shape as a `.vcir` file). Parsed via [`Module::parse_json_slice`](https://github.com/Alphabetsoup16/VectorComplier/tree/main/crates/vc-ir) then **`validate_module`**. Additional float/aux outputs are ignored by `OrtLatentDecoder` (e.g. demo **`y`** tensor). |
 
 **CI fixtures** (opset 13, **ONNX IR version 10**):
 
@@ -50,7 +50,7 @@ Heavy Python ML stacks stay **out** of this workspace; only `ort` is pulled when
 
 ## CLI integration (`vectorc decode-z`)
 
-The **`vectorc`** binary reads bounded UTF-8 JSON (`[f32,…]` or `{"z":[…]}`), dispatches to a [`LatentDecoder`](https://github.com/spencerwolf/VectorComplier/tree/main/crates/vc-bridge/src/decoder.rs), then runs **`validate_module`** and optional Wasm lowering — same validation boundary as **`compile`**.
+The **`vectorc`** binary reads bounded UTF-8 JSON (`[f32,…]` or `{"z":[…]}`), dispatches to a [`LatentDecoder`](https://github.com/Alphabetsoup16/VectorComplier/tree/main/crates/vc-bridge/src/decoder.rs), then runs **`validate_module`** and optional Wasm lowering — same validation boundary as **`compile`**.
 
 | Decoder flag | Implementation |
 |--------------|------------------|
