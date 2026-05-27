@@ -112,3 +112,15 @@ JSON Schema: [`schemas/program_ir_v2.schema.json`](../schemas/program_ir_v2.sche
 - **`vc-cli`:** exercised manually via `cargo run -p vc-cli -- …` and integration tests in `crates/vc-cli/tests/`.
 
 This layering keeps **IR correctness**, **binary shape**, and **runtime policy** independently testable.
+
+---
+
+## Architectural invariants
+
+Independent audit: [ARCHITECTURAL_AUDIT.md](ARCHITECTURAL_AUDIT.md). Rules that should hold across refactors:
+
+1. **Validated IR before Wasm** — `validate_module` on every execution path (directly or inside `lower_module`).
+2. **Single behavioral oracle** — `check`, `eval`, and `bench` share `vc-cli`’s `oracle::evaluate_vcir_path` (parse → validate → lower → invoke).
+3. **Execution ignorance of IR** — `vc-verify` only sees Wasm bytes + policy + limits.
+4. **Decoder fail-closed** — `LatentDecoder` implementations must not emit unvalidated `Module`s (ONNX path validates after decode).
+5. **Agent plans are not edits** — `fix --plan` and repair reports are hints; file mutation is explicit (`synthesize`, `agent-repair -o`, or external tools).

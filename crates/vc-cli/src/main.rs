@@ -19,7 +19,7 @@ use vc_ir::{
     PROGRAM_IR_VERSION,
 };
 use vc_refine::{ProgramRefiner, RandomIrRefiner, Spec};
-use vc_verify::{CompiledModule, MAX_WASM_BYTES};
+use vc_verify::MAX_WASM_BYTES;
 
 use oracle::{evaluate_vcir_path, BenchCase, CheckSummary};
 
@@ -1280,36 +1280,29 @@ fn main() -> Result<()> {
                 );
             }
 
-            let prog_bytes = read_bounded(&prog_canon)?;
-            let module = vc_ir::Module::parse_json_slice(&prog_bytes)
-                .with_context(|| format!("parse {}", prog_canon.display()))?;
-            let wasm = vc_lower_wasm::lower_module(&module)?;
-
             ensure_case_limits(&m.cases)?;
 
-            let compiled = CompiledModule::new(&wasm)?;
-            let limits = vc_verify::Limits {
-                fuel: m.fuel,
-                max_wall_ms: guest_wall.wall_ms,
-            };
-            let mut session = compiled
-                .prepare_invoke(&m.export)
-                .context("prepare benchmark invoke session")?;
-            let mut passed = 0usize;
-            for (i, case) in m.cases.iter().enumerate() {
-                let got = session
-                    .invoke_i32_return(&case.args, limits)
-                    .with_context(|| format!("case {i} execute"))?;
-                anyhow::ensure!(
-                    got == case.expect_i32,
-                    "case {i}: expected {}, got {}",
-                    case.expect_i32,
-                    got
-                );
-                passed += 1;
-            }
-            tracing::info!(passed, total = m.cases.len(), "benchmark OK");
-            println!("{} / {} cases passed", passed, m.cases.len());
+            let summary = evaluate_vcir_path(
+                &prog_canon,
+                &m.export,
+                m.fuel,
+                guest_wall.wall_ms,
+                &m.cases,
+            );
+            anyhow::ensure!(
+                summary.ok,
+                "benchmark failed: {}",
+                summary.errors.join("; ")
+            );
+            tracing::info!(
+                passed = summary.cases_passed,
+                total = summary.cases_total,
+                "benchmark OK"
+            );
+            println!(
+                "{} / {} cases passed",
+                summary.cases_passed, summary.cases_total
+            );
         }
         Command::Eval {
             input,

@@ -176,6 +176,39 @@ fn compile_print_digest_matches_file_digest() {
 }
 
 #[test]
+fn bench_add_manifest_matches_check_oracle() {
+    let root = repo_root();
+    let manifest = root.join("benchmarks/manifests/add.json");
+    let input = root.join("benchmarks/programs/add.vcir");
+
+    let bench = Command::new(vectorc())
+        .args(["bench", "-m", manifest.to_str().expect("utf-8 path")])
+        .current_dir(&root)
+        .output()
+        .expect("spawn bench");
+    assert!(bench.status.success(), "bench failed");
+
+    let check = Command::new(vectorc())
+        .args([
+            "check",
+            "-i",
+            input.to_str().expect("utf-8 path"),
+            "-m",
+            manifest.to_str().expect("utf-8 path"),
+            "--json",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("spawn check");
+    assert!(check.status.success(), "check failed");
+    let summary: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&check.stdout).trim())
+            .expect("parse check JSON");
+    assert_eq!(summary["ok"], true);
+    assert_eq!(summary["cases_passed"], summary["cases_total"]);
+}
+
+#[test]
 fn check_add_vcir_against_manifest() {
     let root = repo_root();
     let input = root.join("benchmarks/programs/add.vcir");

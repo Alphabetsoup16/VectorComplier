@@ -219,6 +219,7 @@ See [docs/AGENT_COMPILER_INTERFACE.md](docs/AGENT_COMPILER_INTERFACE.md).
 | [docs/CODEBASE_AUDIT_2026-05.md](docs/CODEBASE_AUDIT_2026-05.md) | Latest audit summary + backlog |
 | [docs/AGENT_COMPILER_INTERFACE.md](docs/AGENT_COMPILER_INTERFACE.md) | `validate` / `check` / `agent-repair` / `skills` JSON contracts |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crates, boundaries, extension points |
+| [docs/ARCHITECTURAL_AUDIT.md](docs/ARCHITECTURAL_AUDIT.md) | Design review, invariants, evolution |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Scripts, disk hygiene, schema validation |
 | [docs/TRAINING_DATA.md](docs/TRAINING_DATA.md) | Training shard layout and regeneration |
 | [docs/DEBUGGING_DECODE.md](docs/DEBUGGING_DECODE.md) | Decode/eval failure dumps |
