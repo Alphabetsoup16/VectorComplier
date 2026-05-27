@@ -1,3 +1,5 @@
+mod agent;
+
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
@@ -111,6 +113,44 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Validate Program IR only; emit structured `VCIR_*` diagnostics (`--json`).
+    Validate {
+        #[arg(short = 'i', long)]
+        input: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Parse `.vcir` and summarize structure (syntax only; does not validate).
+    Parse {
+        #[arg(short = 'i', long)]
+        input: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Explain a `VCIR_*` validation code, or `--all` for the full catalog.
+    Explain {
+        /// Diagnostic code (e.g. `VCIR_CTL001`).
+        code: Option<String>,
+        #[arg(long)]
+        all: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Typed repair plans from validation failures (`--plan` only; does not edit files).
+    Fix {
+        #[arg(short = 'i', long)]
+        input: PathBuf,
+        /// Required today: only plan mode is implemented.
+        #[arg(long)]
+        plan: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Version-matched agent guidance bundled with the `vectorc` binary.
+    Skills {
+        #[command(subcommand)]
+        action: SkillsCommand,
+    },
     /// Run a Wasm module with fuel metering (single `i32` return).
     Run {
         #[arg(short = 'i', long)]
@@ -199,6 +239,21 @@ enum Command {
         /// Write synthesized Program IR JSON here (otherwise print JSON to stdout).
         #[arg(short = 'o', long)]
         output: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillsCommand {
+    /// List bundled skill documents.
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print one skill (`language`, `diagnostics`, `limits`, `decoder`).
+    Get {
+        name: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -1141,6 +1196,34 @@ fn main() -> Result<()> {
             println!("{}", sha256_hex(&bytes));
         }
         Command::Inspect { input, json } => run_program_ir_inspect(&input, json)?,
+        Command::Validate { input, json } => {
+            let bytes = read_bounded(&input)?;
+            agent::run_validate(&input, &bytes, json)?;
+        }
+        Command::Parse { input, json } => {
+            let bytes = read_bounded(&input)?;
+            agent::run_parse(&input, &bytes, json)?;
+        }
+        Command::Explain { code, all, json } => {
+            if all {
+                agent::run_explain_all(json)?;
+            } else {
+                let code = code.context("explain requires CODE or pass --all")?;
+                agent::run_explain(&code, json)?;
+            }
+        }
+        Command::Fix { input, plan, json } => {
+            anyhow::ensure!(
+                plan,
+                "fix requires --plan (file edits are not implemented; use synthesize or an external agent)"
+            );
+            let bytes = read_bounded(&input)?;
+            agent::run_fix_plan(&input, &bytes, json)?;
+        }
+        Command::Skills { action } => match action {
+            SkillsCommand::List { json } => agent::run_skills_list(json)?,
+            SkillsCommand::Get { name, json } => agent::run_skills_get(&name, json)?,
+        },
         Command::Run {
             wasm,
             export,

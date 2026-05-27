@@ -182,10 +182,26 @@ Executing Wasm is a trust and resource-boundary problem. VectorCompiler defaults
 
 ---
 
+## Agent compiler interface
+
+Machine-readable validation and repair (zerolang-style contracts on Program IR):
+
+```bash
+vectorc validate -i program.vcir --json
+vectorc explain VCIR_CTL001 --json
+vectorc fix -i program.vcir --plan --json
+vectorc skills get language
+```
+
+See [docs/AGENT_COMPILER_INTERFACE.md](docs/AGENT_COMPILER_INTERFACE.md).
+
+---
+
 ## Documentation index
 
 | Document | Contents |
 |----------|----------|
+| [docs/AGENT_COMPILER_INTERFACE.md](docs/AGENT_COMPILER_INTERFACE.md) | `validate` / `explain` / `fix --plan` / `skills` JSON contracts |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crates, boundaries, extension points |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, fuel, supply chain |
 | [docs/DECODER_ROADMAP.md](docs/DECODER_ROADMAP.md) | Latent → IR / ONNX contract |

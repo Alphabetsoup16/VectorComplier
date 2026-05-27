@@ -26,6 +26,11 @@ flowchart TB
 | `compile` | `.vcir` → `.wasm`; `--print-digest` |
 | `digest` | SHA‑256 hex of any bounded file |
 | `inspect` | Human summary or `--json` metrics |
+| `validate` | Static IR validation + `VCIR_*` diagnostics |
+| `parse` | Parse summary (`--json`) |
+| `explain` | Diagnostic code reference (`--all`) |
+| `fix --plan` | Typed repair plan (no file edits) |
+| `skills` | Bundled agent guides (`list` / `get`) |
 | `check` | One manifest/spec, in-process |
 | `eval` | VectorBench suite; `--task` for training oracle |
 | `bench` | Manifest path → reference `.vcir` under `benchmarks/` |

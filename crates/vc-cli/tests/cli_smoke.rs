@@ -491,6 +491,93 @@ fn decode_z_golden_then_run_wasm() {
 }
 
 #[test]
+fn validate_invalid_fixture_json() {
+    let root = repo_root();
+    let input = root.join("benchmarks/conformance/invalid/return_inside_block.vcir");
+    let output = Command::new(vectorc())
+        .args([
+            "validate",
+            "-i",
+            input.to_str().expect("utf-8 path"),
+            "--json",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("spawn validate");
+
+    assert!(
+        !output.status.success(),
+        "invalid IR should fail validate"
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse validate JSON");
+    assert_eq!(report["ok"], false);
+    let diags = report["diagnostics"].as_array().expect("diagnostics array");
+    assert_eq!(diags[0]["code"], "VCIR_CTL001");
+}
+
+#[test]
+fn fix_plan_invalid_fixture() {
+    let root = repo_root();
+    let input = root.join("benchmarks/conformance/invalid/return_inside_block.vcir");
+    let output = Command::new(vectorc())
+        .args([
+            "fix",
+            "-i",
+            input.to_str().expect("utf-8 path"),
+            "--plan",
+            "--json",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("spawn fix --plan");
+
+    assert!(!output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse fix JSON");
+    assert_eq!(report["ok"], false);
+    let plans = report["plans"].as_array().expect("plans");
+    assert_eq!(plans[0]["code"], "VCIR_CTL001");
+    assert_eq!(plans[0]["repair_id"], "move-return-to-function-end");
+}
+
+#[test]
+fn explain_ctl001_json() {
+    let root = repo_root();
+    let output = Command::new(vectorc())
+        .args(["explain", "VCIR_CTL001", "--json"])
+        .current_dir(&root)
+        .output()
+        .expect("spawn explain");
+
+    assert!(output.status.success());
+    let entry: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse explain JSON");
+    assert_eq!(entry["code"], "VCIR_CTL001");
+    assert_eq!(entry["repair"]["id"], "move-return-to-function-end");
+}
+
+#[test]
+fn skills_get_language() {
+    let root = repo_root();
+    let output = Command::new(vectorc())
+        .args(["skills", "get", "language", "--json"])
+        .current_dir(&root)
+        .output()
+        .expect("spawn skills get");
+
+    assert!(output.status.success());
+    let doc: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse skill JSON");
+    assert_eq!(doc["name"], "language");
+    assert!(doc["body"].as_str().unwrap().contains("program_ir_version"));
+}
+
+#[test]
 fn synthesize_add_spec() {
     let root = repo_root();
     let spec = root.join("benchmarks/manifests/add.json");

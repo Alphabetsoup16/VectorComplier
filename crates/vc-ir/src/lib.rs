@@ -3,6 +3,7 @@
 //! **v2:** single exported function, Wasm-aligned types including floats, structured control flow.
 
 mod ast;
+pub mod diagnostics;
 mod limits;
 mod metrics;
 mod validate;
@@ -13,4 +14,8 @@ pub use limits::{
 };
 pub use metrics::{instr_tree_node_count, max_control_nesting_depth};
 pub use serde_json;
+pub use diagnostics::{
+    all_explain_entries, explain_code, fix_plan, parse_summary, validate_report, Diagnostic,
+    DiagnosticCode, ExplainEntry, FixPlan, ParseSummary, RepairHint, ValidateReport,
+};
 pub use validate::{validate_module, ValidationError};
