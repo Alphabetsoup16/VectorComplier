@@ -8,7 +8,7 @@ use serde::Serialize;
 use vc_ir::{fix_plan, validate_module, Module, ValidateReport};
 use vc_refine::{ProgramRefiner, RandomIrRefiner, Spec};
 
-use crate::oracle::{evaluate_vcir_path, CheckSummary, FailedCaseDetail};
+use crate::oracle::{evaluate_vcir_path, read_bounded, CheckSummary, FailedCaseDetail};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RepairStep {
@@ -97,7 +97,7 @@ pub fn run_agent_repair(
         let mut plan = None;
         let mut synthesize_ok = None;
 
-        let bytes = fs::read(&working)
+        let bytes = read_bounded(&working)
             .with_context(|| format!("read working IR {}", working.display()))?;
         if let Ok(module) = Module::parse_json_slice(&bytes) {
             validate_report = Some(vc_ir::validate_report(&module));
@@ -113,7 +113,7 @@ pub fn run_agent_repair(
             && step_idx + 1 < opts.max_steps
         {
             action = "synthesize".into();
-            let seed_bytes = fs::read(&working)?;
+            let seed_bytes = read_bounded(&working)?;
             let initial = Module::parse_json_slice(&seed_bytes)
                 .context("parse seed for synthesize step")?;
             validate_module(&initial).context("seed IR invalid before synthesize")?;

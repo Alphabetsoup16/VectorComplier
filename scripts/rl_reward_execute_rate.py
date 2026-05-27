@@ -5,61 +5,25 @@ Stdout: single float in [0, 1]. Exit 0 on successful eval invocation (even if ra
 
 Examples:
   python3 scripts/rl_reward_execute_rate.py --vcir out.vcir --task add_i32
-  VECTORC=./target/debug/vectorc python3 scripts/rl_reward_execute_rate.py --vcir out.vcir --task mul_i32
+  source scripts/vectorc-prefix.sh && python3 scripts/rl_reward_execute_rate.py --vcir out.vcir --task add_i32
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
 
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+from vectorc_invoke import repo_root, run_vectorc  # noqa: E402
 
 
 def default_suite(root: Path) -> Path:
     return root / "benchmarks/vectorbench_v0/suite.json"
-
-
-def vectorc_bin() -> str:
-    return os.environ.get("VECTORC", "vectorc")
-
-
-def run_eval(
-    vcir: Path,
-    suite: Path,
-    task: str,
-    vectorc: str,
-    cwd: Path,
-) -> dict:
-    cmd = [
-        vectorc,
-        "eval",
-        "-i",
-        str(vcir.resolve()),
-        "--suite",
-        str(suite.resolve()),
-        "--task",
-        task,
-        "--json",
-    ]
-    proc = subprocess.run(
-        cmd,
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        env={**os.environ, "RUST_LOG": "warn"},
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            f"vectorc eval failed (exit {proc.returncode}):\n"
-            f"{proc.stderr or proc.stdout}"
-        )
-    return json.loads(proc.stdout.strip())
 
 
 def main() -> int:
@@ -73,11 +37,6 @@ def main() -> int:
         default=None,
         help="suite.json (default: benchmarks/vectorbench_v0/suite.json)",
     )
-    parser.add_argument(
-        "--vectorc",
-        default=None,
-        help="vectorc binary (default: $VECTORC or vectorc)",
-    )
     args = parser.parse_args()
 
     vcir = args.vcir
@@ -90,11 +49,36 @@ def main() -> int:
         print(f"error: missing suite: {suite}", file=sys.stderr)
         return 2
 
-    vectorc = args.vectorc or vectorc_bin()
     try:
-        summary = run_eval(vcir, suite, args.task, vectorc, root)
-    except (RuntimeError, json.JSONDecodeError) as e:
+        proc = run_vectorc(
+            [
+                "eval",
+                "-i",
+                str(vcir.resolve()),
+                "--suite",
+                str(suite.resolve()),
+                "--task",
+                args.task,
+                "--json",
+            ],
+            root=root,
+            check=False,
+        )
+    except OSError as e:
         print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    if proc.returncode != 0:
+        print(
+            f"vectorc eval failed (exit {proc.returncode}):\n{proc.stderr or proc.stdout}",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        summary = json.loads(proc.stdout.strip())
+    except json.JSONDecodeError as e:
+        print(f"error: parse eval JSON: {e}", file=sys.stderr)
         return 1
 
     rate = float(summary.get("metrics", {}).get("execute_rate", 0.0))

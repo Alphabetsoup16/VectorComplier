@@ -106,7 +106,7 @@ See **[VECTORBENCH_V0.md](VECTORBENCH_V0.md)** for metrics (`execute_rate`, `val
 
 **Goal:** One exported ONNX from your training repo loads in Rust and passes the scoreboard on at least one manifest.
 
-1. Use the four canonical programs under [`benchmarks/programs/`](../benchmarks/programs/) or a tiny memorization set (~50 rows, program-id embeddings).
+1. Use the three **VectorBench v0** programs (`add`, `mul`, `const42` under [`benchmarks/programs/`](../benchmarks/programs/)) or a tiny memorization set (~50 rows, program-id embeddings). A fourth file (`max_f32.vcir`) exists for lowering tests but is **not** in VectorBench v0.
 2. Model: `z (256) → MLP → logits over max_len × 256` bytes (`max_len` 512–768).
 3. Train on CPU (50–200 epochs, batch 32–64).
 4. Export ONNX with names `z`, `program_ir_json` (materialize `uint8` bytes in the graph or in a thin export wrapper).

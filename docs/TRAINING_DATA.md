@@ -64,9 +64,14 @@ python3 scripts/gen_training_rows.py --write
 
 **Larger datasets** (external repo or `--count N`):
 
-- Prefer **split by `program_id`**, not by opcode or case — all rows for one program stay in one split (80/10/10 train/val/test in [TRAINING_ON_MAC.md](TRAINING_ON_MAC.md)).
-- **Prefix rule (optional):** e.g. `holdout_` prefix on `program_id` → `split: "test"` if you do not store an explicit column.
-- **Explicit column (recommended):** set `split` in `rows.jsonl` at generation time; no ambiguity.
+```bash
+python3 scripts/gen_training_rows.py --write --count 100 --auto-split
+```
+
+`--auto-split` assigns **train / val / test** (80/10/10) deterministically from `SHA256(program_id)`; manifest `splits` counts are updated automatically.
+
+- Prefer **split by `program_id`**, not by opcode or case — all rows for one program stay in one split.
+- **Explicit column (recommended):** set `split` in `rows.jsonl` at generation time; use `--auto-split` or your own generator logic.
 
 Never tune generator knobs on **test** / holdout programs.
 

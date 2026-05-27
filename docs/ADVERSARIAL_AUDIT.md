@@ -17,7 +17,7 @@ Adversarial-style review of **current** VectorCompiler paths: what a motivated a
 | Bench / eval manifests | Path escape, huge manifests | Relative paths, no `..`, **`canonicalize`** + **`strip_prefix`** under repo / `benchmarks/` | Untrusted suite JSON still a **trust** input |
 | `synthesize` / `vc-refine` | CPU burn | Step budget + fuel per case | Heuristic search only |
 | `vc-bridge` / ONNX | Untrusted model / bad IR bytes | Shape checks + **`validate_module`** fail-closed | ORT runtime = trusted code; model path is user-supplied |
-| Agent CLI (`skills`, `explain`) | Oversized tokens, path tricks | Skill **allowlist** + name charset/length; diagnostic code format gate | `explain --all` prints full catalog (bounded, ~15 codes) |
+| Agent CLI (`skills`, `explain`) | Oversized tokens, path tricks | Skill **allowlist** + name charset/length; diagnostic code format gate | `explain --all` prints full catalog (bounded, 16 codes) |
 | `agent-repair` | CPU burn via `--synthesize` | **`max_steps`** cap; synthesize only when parse+validate OK but run fails | Overwrites `--input` unless `-o`; temp IR in system temp |
 | `fix --plan` | Misleading auto-repair | **Plan only** — no file writes | Agents must not treat plans as applied fixes |
 | Supply chain | Bad dependency | Lockfile + **`cargo audit`** + **`cargo deny`** in CI | Org SBOM / vendoring not in-repo |

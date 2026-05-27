@@ -2,7 +2,9 @@
 
 ## Toolchain
 
-Install [rustup](https://rustup.rs/) and open a **new shell** so `~/.cargo/bin` is on `PATH` (this repo’s `~/.zshrc` snippet sources `~/.cargo/env` when present).
+Install [rustup](https://rustup.rs/) and open a **new shell** so `~/.cargo/bin` is on `PATH` (e.g. `source ~/.cargo/env` after install).
+
+Run `bash scripts/bootstrap-dev.sh` to verify the pinned toolchain (`rust-toolchain.toml`, currently **1.91.0**). If `rustup override` pins an older compiler in this directory, run `rustup override unset` or use `scripts/vectorc-prefix.sh` / `make preflight-lite`.
 
 ```bash
 cd /path/to/VectorComplier
@@ -96,12 +98,20 @@ See [crates/vc-bridge/README.md](../crates/vc-bridge/README.md) for the **`DECOD
 
 **Training a learned decoder** (separate Python repo, MacBook Air + optional cloud GPU): [TRAINING_ON_MAC.md](TRAINING_ON_MAC.md). Frozen v0 `z` recipe and shard layout: [Z_BUILD.md](Z_BUILD.md), [TRAINING_DATA.md](TRAINING_DATA.md).
 
-## Preflight (before training)
+## Preflight
 
-Full local gate (fmt, clippy, tests, schemas, scoreboards): see [PREFLIGHT_BEFORE_TRAINING.md](PREFLIGHT_BEFORE_TRAINING.md).
+| Gate | When |
+|------|------|
+| `bash scripts/preflight-lite.sh` or `make preflight-lite` | PRs / daily dev (~minutes) |
+| `bash scripts/preflight.sh` | Before decoder training or release |
+
+Script index: [`scripts/README.md`](../scripts/README.md). RL reward smoke: `python3 scripts/rl_reward_execute_rate.py --vcir benchmarks/programs/add.vcir --task add_i32`. Rank decode candidates: `bash scripts/decode_rank_eval.sh /tmp/cands add_i32`.
+
+Full local gate (audit, deny, ONNX scoreboards): see [PREFLIGHT_BEFORE_TRAINING.md](PREFLIGHT_BEFORE_TRAINING.md).
 
 ```bash
 bash scripts/preflight.sh
+RUN_ONNX=0 bash scripts/preflight.sh   # skip ONNX
 ```
 
 **In-process spec check** (compile once, run all manifest cases — use after `decode-z` in training loops):

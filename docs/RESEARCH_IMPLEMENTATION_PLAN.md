@@ -57,16 +57,16 @@ This document is the **engineering contract** for what is implemented in-repo vs
 
 ```bash
 # Structured check (behavioral)
-vectorc check -i prog.vcir -m benchmarks/vectorbench_v0/manifests/add_i32.json --json
+vectorc check -i prog.vcir -m benchmarks/manifests/add.json --json
 
 # Bounded CEGIS-style loop
-vectorc agent-repair -i prog.vcir --spec spec.json --max-steps 3 --synthesize --json
+vectorc agent-repair -i prog.vcir -m benchmarks/manifests/add.json --max-steps 3 --synthesize --json
 
 # RL reward (training repo)
 python3 scripts/rl_reward_execute_rate.py --vcir out.vcir --task add_i32
 
 # Multi-candidate ranking after decode
-./scripts/decode_rank_eval.sh z.json candidates/ ranked/
+./scripts/decode_rank_eval.sh /tmp/candidates add_i32
 ```
 
 ---

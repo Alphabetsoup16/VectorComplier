@@ -60,7 +60,8 @@ flowchart LR
 For search-based repair inside the repo, use `vectorc synthesize` (`vc-refine`) or the bounded loop:
 
 ```bash
-vectorc agent-repair -i prog.vcir --spec spec.json --max-steps 3 --synthesize --json
+vectorc agent-repair -i prog.vcir -m benchmarks/manifests/add.json --max-steps 3 --synthesize --json
+# or: --spec path/to/spec.json  (JSON: { "cases": [ { "args": [...], "expect_i32": N }, ... ] })
 ```
 
 `check --json` may include structured counterexamples:

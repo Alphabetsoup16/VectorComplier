@@ -45,8 +45,10 @@ Returns exit code 0 and prints a float in `[0, 1]` on stdout (suitable for TRL/c
 
 Environment:
 
-- `VECTORC` — path to `vectorc` binary (default: `vectorc` on `PATH`)
-- `VECTORCOMPILER_ROOT` — repo root if suite path is relative
+- `VECTORC` — full command prefix (same as `scripts/vectorc-prefix.sh`, e.g. `rustup run 1.91.0 cargo run -p vc-cli --quiet --`)
+- `VECTORCOMPILER_ROOT` or `VECTORC_ROOT` — repo root when paths are relative
+
+Without `VECTORC`, the script uses `rustup run <rust-toolchain.toml channel> cargo run -p vc-cli` (no separate install required).
 
 ---
 
@@ -55,7 +57,7 @@ Environment:
 For decode-time filtering without full suite:
 
 ```bash
-vectorc check -i PROGRAM.vcir --manifest benchmarks/vectorbench_v0/manifests/add_i32.json --json
+vectorc check -i PROGRAM.vcir -m benchmarks/manifests/add.json --json
 ```
 
 Structured failures include:
@@ -97,7 +99,7 @@ Group-relative methods (Posterior-GRPO, etc.) should use **multiple samples per 
 ## Invariants
 
 1. Every reward call runs **`validate_module`** before Wasm (invalid IR → 0 execute).
-2. Wasm invocation uses **fuel** and optional **wall_ms** from the suite manifest.
+2. Wasm invocation uses **fuel** from the manifest; optional guest wall clock via `vectorc --wall-ms` (not a manifest field).
 3. Training artifacts are **`.vcir` JSON**, not raw Wasm, until the lowerer accepts them.
 
 See [LATENT_FIRST_TRAINING_PLAN.md](LATENT_FIRST_TRAINING_PLAN.md) and [RESEARCH_IMPLEMENTATION_PLAN.md](RESEARCH_IMPLEMENTATION_PLAN.md).

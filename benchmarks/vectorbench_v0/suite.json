@@ -8,7 +8,7 @@
       "task_id": "add_i32",
       "manifest": "benchmarks/manifests/add.json",
       "program_glob": "benchmarks/programs/add.vcir",
-      "notes": "Two-parameter i32 add; 4 I/O cases."
+      "notes": "Two-parameter i32 add; 3 I/O cases."
     },
     {
       "task_id": "mul_i32",

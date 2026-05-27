@@ -13,7 +13,7 @@ This document describes how VectorCompiler is split into crates, where responsib
 | **`vc-verify`** | **Execution sandbox (host-side):** Wasmtime with **fuel** + **epoch interruption**, **`WasmPolicy`** scan (deny imports/memory/tables/start by default), **`&[]` imports**, single exported **`(i32…)→i32`** call. |
 | **`vc-refine`** | **Verifier-guided IR search:** behavioral **`Spec`** over I/O cases; **`RandomIrRefiner`** mutates IR and checks candidates via **`vc-verify`** (used by **`vectorc synthesize`**). |
 | **`vc-bridge`** | **Latent → IR:** `LatentDecoder::decode_z`; **`StubLatentDecoder`**, **`GoldenLatentDecoder`**; optional **`onnx`** → **`OrtLatentDecoder`** (`z` + **`program_ir_json`** → validated `Module`). |
-| **`vc-cli`** | **Operator UX:** **`decode-z`** (latent JSON → IR / Wasm via `vc-bridge`), **`compile`** / **`digest`** / **`inspect`**, **`run`**, **`bench`**, **`synthesize`**; orchestrates the crates above. Binary name **`vectorc`**. |
+| **`vc-cli`** | **Operator UX:** **`decode-z`**, **`compile`** / **`digest`** / **`inspect`**, agent surface (**`validate`**, **`parse`**, **`explain`**, **`fix`**, **`skills`**), **`check`** / **`eval`** (in-process oracle in `oracle.rs`), **`agent-repair`** (`repair.rs`), **`run`**, **`bench`**, **`synthesize`**. Binary name **`vectorc`**. |
 
 ---
 
