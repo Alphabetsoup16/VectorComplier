@@ -31,7 +31,8 @@ flowchart TB
 | `explain` | Diagnostic code reference (`--all`) |
 | `fix --plan` | Typed repair plan (no file edits) |
 | `skills` | Bundled agent guides (`list` / `get`) |
-| `check` | One manifest/spec, in-process |
+| `check` | One manifest/spec, in-process; `--json` includes `validation_code` / `failed_case` |
+| `agent-repair` | Bounded check → fix-plan → optional `--synthesize` |
 | `eval` | VectorBench suite; `--task` for training oracle |
 | `bench` | Manifest path → reference `.vcir` under `benchmarks/` |
 | `run` | Wasm + fuel; optional `--isolate` subprocess |
@@ -47,7 +48,7 @@ cargo run -p vc-cli --quiet -- eval \
   --json
 ```
 
-Wrappers: [`scripts/training-oracle.sh`](../../scripts/training-oracle.sh), [`scripts/vectorbench_oracle.py`](../../scripts/vectorbench_oracle.py).
+Wrappers: [`scripts/training-oracle.sh`](../../scripts/training-oracle.sh), [`scripts/rl_reward_execute_rate.py`](../../scripts/rl_reward_execute_rate.py), [`scripts/vectorbench_oracle.py`](../../scripts/vectorbench_oracle.py).
 
 ## Features
 

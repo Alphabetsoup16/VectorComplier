@@ -629,3 +629,89 @@ fn synthesize_add_spec() {
     vc_ir::validate_module(&module).expect("synthesized IR validates");
     let _ = std::fs::remove_file(&out);
 }
+
+#[test]
+fn check_invalid_fixture_reports_validation_code() {
+    let root = repo_root();
+    let input = root.join("benchmarks/conformance/invalid/return_inside_block.vcir");
+    let manifest = root.join("benchmarks/manifests/add.json");
+    let output = Command::new(vectorc())
+        .args([
+            "check",
+            "-i",
+            input.to_str().expect("utf-8 path"),
+            "-m",
+            manifest.to_str().expect("utf-8 path"),
+            "--json",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("spawn check");
+
+    assert!(!output.status.success());
+    let summary: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse check JSON");
+    assert_eq!(summary["validation_code"], "VCIR_CTL001");
+    assert_eq!(summary["validate_ok"], false);
+}
+
+#[test]
+fn agent_repair_add_passes_one_step() {
+    let root = repo_root();
+    let input = root.join("benchmarks/programs/add.vcir");
+    let manifest = root.join("benchmarks/manifests/add.json");
+    let output = Command::new(vectorc())
+        .args([
+            "agent-repair",
+            "-i",
+            input.to_str().expect("utf-8 path"),
+            "-m",
+            manifest.to_str().expect("utf-8 path"),
+            "--max-steps",
+            "1",
+            "--json",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("spawn agent-repair");
+
+    assert!(
+        output.status.success(),
+        "agent-repair failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse agent-repair JSON");
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["steps"][0]["action"], "pass");
+}
+
+#[test]
+fn agent_repair_invalid_reports_validation_code() {
+    let root = repo_root();
+    let input = root.join("benchmarks/conformance/invalid/return_inside_block.vcir");
+    let manifest = root.join("benchmarks/manifests/add.json");
+    let output = Command::new(vectorc())
+        .args([
+            "agent-repair",
+            "-i",
+            input.to_str().expect("utf-8 path"),
+            "-m",
+            manifest.to_str().expect("utf-8 path"),
+            "--max-steps",
+            "1",
+            "--json",
+        ])
+        .current_dir(&root)
+        .output()
+        .expect("spawn agent-repair");
+
+    assert!(!output.status.success());
+    let report: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim())
+            .expect("parse agent-repair JSON");
+    assert_eq!(report["ok"], false);
+    assert_eq!(report["steps"][0]["validation_code"], "VCIR_CTL001");
+}

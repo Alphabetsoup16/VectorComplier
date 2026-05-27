@@ -210,6 +210,9 @@ See [docs/AGENT_COMPILER_INTERFACE.md](docs/AGENT_COMPILER_INTERFACE.md).
 | [docs/PREFLIGHT_BEFORE_TRAINING.md](docs/PREFLIGHT_BEFORE_TRAINING.md) | Gate before decoder training |
 | [docs/LATENT_FIRST_TRAINING_PLAN.md](docs/LATENT_FIRST_TRAINING_PLAN.md) | End-to-end training roadmap |
 | [docs/TRAINING_ON_MAC.md](docs/TRAINING_ON_MAC.md) | Economical training on Apple Silicon |
+| [docs/RESEARCH_IMPLEMENTATION_PLAN.md](docs/RESEARCH_IMPLEMENTATION_PLAN.md) | Research → engineering phases (RL, CEGIS, agent CLI) |
+| [docs/TRAINING_REWARD_CONTRACT.md](docs/TRAINING_REWARD_CONTRACT.md) | `execute_rate` reward for external training |
+| [docs/RESEARCH_READING_LIST.md](docs/RESEARCH_READING_LIST.md) | Curated paper pointers |
 | [schemas/](schemas/) | JSON Schema for IR, benches, datasets |
 
 ---

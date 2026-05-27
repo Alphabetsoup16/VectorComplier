@@ -1,4 +1,6 @@
 mod agent;
+mod oracle;
+mod repair;
 
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -6,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command as ProcessCommand, Stdio};
 use std::thread;
@@ -20,8 +21,7 @@ use vc_ir::{
 use vc_refine::{ProgramRefiner, RandomIrRefiner, Spec};
 use vc_verify::{CompiledModule, MAX_WASM_BYTES};
 
-/// Hard cap on files read via CLI (manifest / `.vcir` / `.wasm`).
-const MAX_CLI_FILE_BYTES: usize = 16 * 1024 * 1024;
+use oracle::{evaluate_vcir_path, BenchCase, CheckSummary};
 
 const MAX_BENCH_CASES: usize = 10_000;
 
@@ -151,6 +151,37 @@ enum Command {
         #[command(subcommand)]
         action: SkillsCommand,
     },
+    /// Bounded repair loop: check → fix-plan hints → optional synthesize (CEGIS-style).
+    AgentRepair {
+        #[arg(short = 'i', long)]
+        input: PathBuf,
+        /// Behavioral spec JSON (`cases` only; same shape as `synthesize --spec`).
+        #[arg(long, conflicts_with = "manifest")]
+        spec: Option<PathBuf>,
+        /// Benchmark manifest (`cases`, `export`, `fuel`; ignores `program_path`).
+        #[arg(short = 'm', long, conflicts_with = "spec")]
+        manifest: Option<PathBuf>,
+        #[arg(long)]
+        export: Option<String>,
+        #[arg(long)]
+        fuel: Option<u64>,
+        #[arg(long, default_value_t = 3)]
+        max_steps: usize,
+        /// After a behavioral failure, run in-process `synthesize` before re-checking.
+        #[arg(long)]
+        synthesize: bool,
+        #[arg(long, default_value_t = 200)]
+        synthesize_steps: usize,
+        #[arg(long, default_value_t = 0)]
+        refiner_seed: u64,
+        /// Write repaired IR here instead of overwriting `--input`.
+        #[arg(short = 'o', long)]
+        output: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
+        #[command(flatten)]
+        guest_wall: GuestWallClockArgs,
+    },
     /// Run a Wasm module with fuel metering (single `i32` return).
     Run {
         #[arg(short = 'i', long)]
@@ -276,12 +307,6 @@ fn default_fuel() -> u64 {
     50_000
 }
 
-#[derive(Debug, Deserialize)]
-struct BenchCase {
-    args: Vec<i32>,
-    expect_i32: i32,
-}
-
 /// Spec file for `synthesize` (optional `schema_version`, required `cases`).
 #[derive(Debug, Deserialize)]
 struct SynthesizeSpecFile {
@@ -405,19 +430,6 @@ fn load_seed_module(seed: Option<&Path>) -> Result<Module> {
     Ok(minimal_add_seed())
 }
 
-#[derive(Debug, Clone, Serialize)]
-struct CheckSummary {
-    parse_ok: bool,
-    validate_ok: bool,
-    compile_ok: bool,
-    run_ok: bool,
-    cases_passed: usize,
-    cases_total: usize,
-    ok: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    errors: Vec<String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct VectorbenchSuite {
     schema_version: u32,
@@ -499,99 +511,6 @@ fn load_check_cases(
     }
 }
 
-fn evaluate_vcir(
-    input: &Path,
-    export: &str,
-    fuel: u64,
-    max_wall_ms: Option<u64>,
-    cases: &[BenchCase],
-) -> CheckSummary {
-    let cases_total = cases.len();
-    let mut summary = CheckSummary {
-        parse_ok: false,
-        validate_ok: false,
-        compile_ok: false,
-        run_ok: false,
-        cases_passed: 0,
-        cases_total,
-        ok: false,
-        errors: Vec::new(),
-    };
-
-    let bytes = match read_bounded(input) {
-        Ok(b) => b,
-        Err(e) => {
-            summary
-                .errors
-                .push(format!("read {}: {e:#}", input.display()));
-            return summary;
-        }
-    };
-
-    let module = match vc_ir::Module::parse_json_slice(&bytes) {
-        Ok(m) => m,
-        Err(e) => {
-            summary
-                .errors
-                .push(format!("parse Program IR {}: {e}", input.display()));
-            return summary;
-        }
-    };
-    summary.parse_ok = true;
-
-    if let Err(e) = vc_ir::validate_module(&module) {
-        summary.errors.push(format!("validate_module: {e}"));
-        return summary;
-    }
-    summary.validate_ok = true;
-
-    let wasm = match vc_lower_wasm::lower_module(&module) {
-        Ok(w) => w,
-        Err(e) => {
-            summary.errors.push(format!("lower: {e:#}"));
-            return summary;
-        }
-    };
-
-    if let Err(e) = ensure_wasm_emit_size(&wasm) {
-        summary.errors.push(format!("{e:#}"));
-        return summary;
-    }
-    summary.compile_ok = true;
-
-    let compiled = match CompiledModule::new(&wasm) {
-        Ok(c) => c,
-        Err(e) => {
-            summary.errors.push(format!("instantiate: {e:#}"));
-            return summary;
-        }
-    };
-
-    let limits = vc_verify::Limits { fuel, max_wall_ms };
-
-    let mut session = match compiled.prepare_invoke(export) {
-        Ok(s) => s,
-        Err(e) => {
-            summary.errors.push(format!("prepare invoke: {e:#}"));
-            return summary;
-        }
-    };
-
-    for (i, case) in cases.iter().enumerate() {
-        match session.invoke_i32_return(&case.args, limits) {
-            Ok(got) if got == case.expect_i32 => summary.cases_passed += 1,
-            Ok(got) => summary
-                .errors
-                .push(format!("case {i}: expected {}, got {got}", case.expect_i32)),
-            Err(e) => summary.errors.push(format!("case {i}: {e:#}")),
-        }
-    }
-
-    summary.run_ok = summary.cases_passed == summary.cases_total && cases_total > 0;
-    summary.ok = summary.validate_ok && summary.compile_ok && summary.run_ok;
-    summary
-}
-
 fn finish_check(summary: &CheckSummary, json: bool) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string(summary)?);
@@ -620,7 +539,7 @@ fn run_check(
     let (default_export, default_fuel, cases) = load_check_cases(spec, manifest)?;
     let export = export_override.unwrap_or(&default_export);
     let fuel = fuel_override.unwrap_or(default_fuel);
-    let summary = evaluate_vcir(input, export, fuel, max_wall_ms, &cases);
+    let summary = evaluate_vcir_path(input, export, fuel, max_wall_ms, &cases);
     if summary.ok {
         tracing::info!(export, fuel, cases_total = summary.cases_total, "check OK");
     } else {
@@ -726,7 +645,7 @@ fn run_eval(
         let manifest_path = resolve_suite_manifest(suite_path, &task.manifest)?;
         let m = load_bench_manifest(&manifest_path)?;
         ensure_case_limits(&m.cases)?;
-        let summary = evaluate_vcir(input, &m.export, m.fuel, max_wall_ms, &m.cases);
+        let summary = evaluate_vcir_path(input, &m.export, m.fuel, max_wall_ms, &m.cases);
         if summary.ok {
             tasks_passed += 1;
         }
@@ -808,19 +727,7 @@ fn load_synthesize_spec(path: &Path) -> Result<Spec> {
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>> {
-    let file = fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mut buf = Vec::new();
-    file.take((MAX_CLI_FILE_BYTES as u64) + 1)
-        .read_to_end(&mut buf)
-        .with_context(|| format!("read {}", path.display()))?;
-    if buf.len() > MAX_CLI_FILE_BYTES {
-        anyhow::bail!(
-            "file exceeds max size ({}, limit {})",
-            path.display(),
-            MAX_CLI_FILE_BYTES
-        );
-    }
-    Ok(buf)
+    oracle::read_bounded(path).with_context(|| format!("read {}", path.display()))
 }
 
 fn read_bounded_string(path: &Path) -> Result<String> {
@@ -1249,6 +1156,57 @@ fn main() -> Result<()> {
             SkillsCommand::List { json } => agent::run_skills_list(json)?,
             SkillsCommand::Get { name, json } => agent::run_skills_get(&name, json)?,
         },
+        Command::AgentRepair {
+            input,
+            spec,
+            manifest,
+            export,
+            fuel,
+            max_steps,
+            synthesize,
+            synthesize_steps,
+            refiner_seed,
+            output,
+            json,
+            guest_wall,
+        } => {
+            let (default_export, default_fuel, cases) = load_check_cases(spec.as_deref(), manifest.as_deref())?;
+            let export_name = export.as_deref().unwrap_or(&default_export);
+            let fuel_budget = fuel.unwrap_or(default_fuel);
+            let behavioral = if let Some(spec_path) = spec.as_deref() {
+                load_synthesize_spec(spec_path)?
+            } else if let Some(manifest_path) = manifest.as_deref() {
+                let m = load_bench_manifest(manifest_path)?;
+                Spec {
+                    cases: m
+                        .cases
+                        .into_iter()
+                        .map(|c| vc_refine::SpecCase {
+                            args: c.args,
+                            expect_i32: c.expect_i32,
+                        })
+                        .collect(),
+                }
+            } else {
+                anyhow::bail!("agent-repair requires --spec or --manifest");
+            };
+            repair::run_agent_repair(
+                &input,
+                export_name,
+                &cases,
+                &behavioral,
+                repair::AgentRepairOptions {
+                    max_steps,
+                    synthesize,
+                    synthesize_steps,
+                    refiner_seed,
+                    fuel: fuel_budget,
+                    max_wall_ms: guest_wall.wall_ms,
+                    json,
+                    write_output: output,
+                },
+            )?;
+        }
         Command::Run {
             wasm,
             export,

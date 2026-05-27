@@ -24,6 +24,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import importlib.util
 import json
@@ -48,6 +49,17 @@ FAMILY_TO_TASK: dict[str, str] = {
 }
 CANONICAL_FAMILIES = tuple(FAMILY_TO_TASK.keys())
 DEFAULT_SPLIT = "train"
+
+
+def assign_split(program_id: str) -> str:
+    """Deterministic 80/10/10 train/val/test from program_id (reproducible across machines)."""
+    h = int(hashlib.sha256(program_id.encode("utf-8")).hexdigest()[:8], 16)
+    r = h % 10
+    if r < 8:
+        return "train"
+    if r == 8:
+        return "val"
+    return "test"
 
 
 def repo_root() -> Path:
@@ -118,6 +130,7 @@ def build_manifest(
     vcir_artifacts: list[dict[str, Any]],
     rows_bytes: bytes | None,
     row_count: int,
+    rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     artifacts = list(vcir_artifacts)
     training_index: dict[str, Any] | None = None
@@ -143,12 +156,19 @@ def build_manifest(
             "Frozen training slice for VectorBench v0 canonical i32 tasks; "
             "regenerate with scripts/gen_training_rows.py."
         ),
-        "splits": {
-            "train": {
-                "relative_prefix": PROGRAMS_PREFIX,
-                "count": len({a["relative_path"] for a in vcir_artifacts}),
-            },
-        },
+        "splits": (
+            {
+                name: {"count": cnt}
+                for name, cnt in sorted(Counter(r["split"] for r in rows).items())
+            }
+            if rows
+            else {
+                "train": {
+                    "relative_prefix": PROGRAMS_PREFIX,
+                    "count": len({a["relative_path"] for a in vcir_artifacts}),
+                },
+            }
+        ),
         "artifacts": artifacts,
     }
     if training_index is not None:
@@ -274,6 +294,7 @@ def build_rows(
     fixture_mod: Any,
     count: int,
     split: str,
+    auto_split: bool,
 ) -> tuple[list[dict[str, Any]], dict[str, bytes]]:
     """Return rows and unique family -> vcir bytes for programs/."""
     family_bytes: dict[str, bytes] = {}
@@ -286,11 +307,12 @@ def build_rows(
         family_bytes[family] = data
 
         vcir_rel = f"{PROGRAMS_PREFIX}{family}.vcir"
+        row_split = assign_split(program_id) if auto_split else split
         rows.append(
             {
                 "program_id": program_id,
                 "task_id": FAMILY_TO_TASK[family],
-                "split": split,
+                "split": row_split,
                 "z": build_z(program_id),
                 "vcir_path": vcir_rel,
                 "manifest": MANIFEST_REL,
@@ -325,10 +347,11 @@ def write_shard(
     fixture_mod: Any,
     count: int,
     split: str,
+    auto_split: bool,
     skip_eval: bool,
 ) -> bool:
     rows, family_bytes = build_rows(
-        shard_root, programs_dir, fixture_mod, count, split
+        shard_root, programs_dir, fixture_mod, count, split, auto_split
     )
     shard_programs = shard_root / PROGRAMS_PREFIX.rstrip("/")
 
@@ -349,7 +372,7 @@ def write_shard(
         artifact_entry(f"{PROGRAMS_PREFIX}{family}.vcir", data)
         for family, data in sorted(family_bytes.items())
     ]
-    manifest = build_manifest(vcir_artifacts, rows_bytes, len(rows))
+    manifest = build_manifest(vcir_artifacts, rows_bytes, len(rows), rows=rows)
     manifest_path = shard_root / MANIFEST_REL
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
@@ -372,6 +395,7 @@ def verify_shard(
     fixture_mod: Any,
     count: int,
     split: str,
+    auto_split: bool,
     skip_eval: bool,
 ) -> int:
     rows_path = shard_root / ROWS_REL
@@ -382,7 +406,7 @@ def verify_shard(
         raise SystemExit(f"missing {manifest_path} (pass --write to create)")
 
     expected_rows, family_bytes = build_rows(
-        shard_root, programs_dir, fixture_mod, count, split
+        shard_root, programs_dir, fixture_mod, count, split, auto_split
     )
     on_disk_rows: list[dict[str, Any]] = []
     for line_no, line in enumerate(rows_path.read_text(encoding="utf-8").splitlines(), 1):
@@ -501,7 +525,12 @@ def main() -> int:
         "--split",
         default=DEFAULT_SPLIT,
         choices=("train", "val", "test"),
-        help=f"Split label for every row (default: {DEFAULT_SPLIT})",
+        help=f"Split label for every row when --auto-split is off (default: {DEFAULT_SPLIT})",
+    )
+    parser.add_argument(
+        "--auto-split",
+        action="store_true",
+        help="Assign train/val/test per program_id via SHA256 (80/10/10); ignores --split",
     )
     parser.add_argument(
         "--skip-eval",
@@ -536,6 +565,7 @@ def main() -> int:
             fixture_mod,
             args.count,
             args.split,
+            args.auto_split,
             skip_eval,
         ):
             return 1
@@ -546,6 +576,7 @@ def main() -> int:
             fixture_mod,
             args.count,
             args.split,
+            args.auto_split,
             skip_eval,
         )
 

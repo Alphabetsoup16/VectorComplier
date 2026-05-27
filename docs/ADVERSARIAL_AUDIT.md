@@ -18,6 +18,7 @@ Adversarial-style review of **current** VectorCompiler paths: what a motivated a
 | `synthesize` / `vc-refine` | CPU burn | Step budget + fuel per case | Heuristic search only |
 | `vc-bridge` / ONNX | Untrusted model / bad IR bytes | Shape checks + **`validate_module`** fail-closed | ORT runtime = trusted code; model path is user-supplied |
 | Agent CLI (`skills`, `explain`) | Oversized tokens, path tricks | Skill **allowlist** + name charset/length; diagnostic code format gate | `explain --all` prints full catalog (bounded, ~15 codes) |
+| `agent-repair` | CPU burn via `--synthesize` | **`max_steps`** cap; synthesize only when parse+validate OK but run fails | Overwrites `--input` unless `-o`; temp IR in system temp |
 | `fix --plan` | Misleading auto-repair | **Plan only** — no file writes | Agents must not treat plans as applied fixes |
 | Supply chain | Bad dependency | Lockfile + **`cargo audit`** + **`cargo deny`** in CI | Org SBOM / vendoring not in-repo |
 
@@ -113,7 +114,7 @@ First-party modules: no imports, single export, policy-tested in CI.
 
 ---
 
-## Path 6: Agent compiler interface (new)
+## Path 6: Agent compiler interface
 
 **Flow:** `validate` / `parse` / `explain` / `fix --plan` / `skills` — structured stdout for automation.
 
@@ -135,6 +136,29 @@ First-party modules: no imports, single export, policy-tested in CI.
 
 - Repair plans are **heuristic** (safe vs heuristic `repair.safety`); wrong automated edits remain possible if an agent applies plans blindly.
 - `parse` does **not** validate—agents must call `validate` before `compile`.
+
+---
+
+## Path 7: `agent-repair`
+
+**Flow:** bounded `check` → optional `fix_plan` metadata → optional in-process **`synthesize`** (`vc-refine`) → re-check.
+
+### Abuse
+
+1. **`--max-steps` huge + `--synthesize`** — multiplies refiner work (fuel per case × `synthesize_steps` × steps).
+2. **Overwrite `--input`** — default writes successful repair back to input path (use `-o` for sandbox copies).
+3. **Trusting repair JSON as fixed** — plans are hints; synthesize output is heuristic.
+
+### Mitigations
+
+- Default **`max_steps=3`**; synthesize runs only when IR already validates but behavioral check fails.
+- Same **16 MiB** read cap and fuel/wall limits as `check`.
+- Structured **`validation_code`** / **`failed_case`** for CEGIS-style external agents (no silent success).
+
+### Residual
+
+- Not a proof of correctness—only passes manifest/spec cases within budgets.
+- Temp files in `$TMPDIR` may leak partial IR on shared hosts (use `-o` + private temp).
 
 ---
 
@@ -169,5 +193,7 @@ First-party modules: no imports, single export, policy-tested in CI.
 | 2026-05 | Eval absolute suite manifests | Relative only + repo-root canonicalize |
 | 2026-05 | Agent skill / explain injection | Allowlist + token format limits |
 | 2026-05 | Agent interface | `VCIR_*` diagnostics, `fix --plan` (no writes), bundled skills |
+| 2026-05 | Structured `check` / CEGIS loop | `validation_code`, `failed_case`; `agent-repair` bounded synthesize |
+| 2026-05 | RL training hooks | `scripts/rl_reward_execute_rate.py`, `--auto-split` in `gen_training_rows.py` |
 
 **Still not solved by fuel alone:** Cranelift compile + instantiation CPU within size caps.

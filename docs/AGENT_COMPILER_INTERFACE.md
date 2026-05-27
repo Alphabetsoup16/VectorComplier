@@ -18,6 +18,7 @@ Human prose remains on **stderr** (`RUST_LOG`); **stdout** is for machine contra
 | `vectorc skills list` / `skills get language` | Version-matched IR / limits / decoder docs |
 | `vectorc inspect --json` | Metrics after successful validation |
 | `vectorc check --json` | Behavioral oracle (parse → validate → compile → run) |
+| `vectorc agent-repair --json` | Bounded check → fix-plan → optional `synthesize` |
 | `vectorc eval --json` | VectorBench metrics (`execute_rate`, …) |
 
 **Naming:** `validate` = static IR typing. `check` = behavioral spec / manifest execution.
@@ -56,7 +57,22 @@ flowchart LR
   VAL -->|ok| CHK["vectorc check / eval --json"]
 ```
 
-For search-based repair inside the repo, use `vectorc synthesize` (`vc-refine`) against a behavioral spec.
+For search-based repair inside the repo, use `vectorc synthesize` (`vc-refine`) or the bounded loop:
+
+```bash
+vectorc agent-repair -i prog.vcir --spec spec.json --max-steps 3 --synthesize --json
+```
+
+`check --json` may include structured counterexamples:
+
+```json
+{
+  "ok": false,
+  "validation_code": "VCIR_CTL001",
+  "failed_case_index": 0,
+  "failed_case": { "args": [1, 2], "expect_i32": 3, "got_i32": 99 }
+}
+```
 
 ---
 
