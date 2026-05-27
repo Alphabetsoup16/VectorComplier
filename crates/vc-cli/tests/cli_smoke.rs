@@ -561,6 +561,30 @@ fn explain_ctl001_json() {
 }
 
 #[test]
+fn explain_rejects_invalid_code_format() {
+    let root = repo_root();
+    let output = Command::new(vectorc())
+        .args(["explain", "not-a-real-code", "--json"])
+        .current_dir(&root)
+        .output()
+        .expect("spawn explain bad code");
+
+    assert!(!output.status.success());
+}
+
+#[test]
+fn skills_get_rejects_path_like_name() {
+    let root = repo_root();
+    let output = Command::new(vectorc())
+        .args(["skills", "get", "../../../etc/passwd"])
+        .current_dir(&root)
+        .output()
+        .expect("spawn skills get traversal");
+
+    assert!(!output.status.success());
+}
+
+#[test]
 fn skills_get_language() {
     let root = repo_root();
     let output = Command::new(vectorc())

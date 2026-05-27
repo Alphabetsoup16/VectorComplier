@@ -15,6 +15,24 @@ const SKILL_DECODER: &str = include_str!("../../../skills/decoder.md");
 
 pub const SKILL_NAMES: &[&str] = &["language", "diagnostics", "limits", "decoder"];
 
+const MAX_SKILL_NAME_LEN: usize = 64;
+const MAX_DIAGNOSTIC_CODE_LEN: usize = 32;
+
+fn is_safe_skill_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= MAX_SKILL_NAME_LEN
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn is_diagnostic_code_token(code: &str) -> bool {
+    code.len() <= MAX_DIAGNOSTIC_CODE_LEN
+        && code.starts_with("VCIR_")
+        && code.len() >= 9
+        && code[5..].bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+}
+
 fn skill_body(name: &str) -> Option<&'static str> {
     match name {
         "language" => Some(SKILL_LANGUAGE),
@@ -78,6 +96,10 @@ pub fn run_skills_list(json: bool) -> Result<()> {
 }
 
 pub fn run_skills_get(name: &str, json: bool) -> Result<()> {
+    anyhow::ensure!(
+        is_safe_skill_name(name),
+        "invalid skill name (use alphanumeric, `-`, `_`; max {MAX_SKILL_NAME_LEN} bytes)"
+    );
     let body = skill_body(name)
         .with_context(|| format!("unknown skill `{name}` (try: {})", SKILL_NAMES.join(", ")))?;
     if json {
@@ -96,6 +118,10 @@ pub fn run_skills_get(name: &str, json: bool) -> Result<()> {
 }
 
 pub fn run_explain(code: &str, json: bool) -> Result<()> {
+    anyhow::ensure!(
+        is_diagnostic_code_token(code),
+        "invalid diagnostic code format (expected e.g. VCIR_CTL001)"
+    );
     let entry = explain_code(code).with_context(|| format!("unknown diagnostic code `{code}`"))?;
     print_explain(&entry, json)
 }

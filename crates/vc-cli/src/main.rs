@@ -653,12 +653,30 @@ fn resolve_suite_manifest(suite_path: &Path, manifest: &Path) -> Result<PathBuf>
         .parent()
         .and_then(|p| p.parent())
         .context("suite path must be under benchmarks/<name>/suite.json")?;
-    if manifest.is_absolute() {
-        return Ok(manifest.to_path_buf());
-    }
+    anyhow::ensure!(
+        !manifest.is_absolute(),
+        "suite manifest path must be relative (got {})",
+        manifest.display()
+    );
+    anyhow::ensure!(
+        !manifest
+            .components()
+            .any(|c| matches!(c, Component::ParentDir)),
+        "suite manifest path must not contain `..` (got {})",
+        manifest.display()
+    );
     let candidate = repo_root.join(manifest);
     if candidate.is_file() {
-        return Ok(candidate);
+        let root_canon = fs::canonicalize(repo_root)
+            .with_context(|| format!("canonicalize {}", repo_root.display()))?;
+        let man_canon = fs::canonicalize(&candidate)
+            .with_context(|| format!("canonicalize {}", candidate.display()))?;
+        anyhow::ensure!(
+            man_canon.strip_prefix(&root_canon).is_ok(),
+            "manifest `{}` resolves outside repository root",
+            manifest.display()
+        );
+        return Ok(man_canon);
     }
     let alt = suite_dir.join(manifest);
     anyhow::ensure!(
@@ -667,7 +685,14 @@ fn resolve_suite_manifest(suite_path: &Path, manifest: &Path) -> Result<PathBuf>
         candidate.display(),
         alt.display()
     );
-    Ok(alt)
+    let root_canon = fs::canonicalize(repo_root)?;
+    let alt_canon = fs::canonicalize(&alt)?;
+    anyhow::ensure!(
+        alt_canon.strip_prefix(&root_canon).is_ok(),
+        "manifest `{}` resolves outside repository root",
+        manifest.display()
+    );
+    Ok(alt_canon)
 }
 
 fn run_eval(

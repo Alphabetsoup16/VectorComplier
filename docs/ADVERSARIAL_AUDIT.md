@@ -1,8 +1,10 @@
 # Adversarial audit (codebase review)
 
-This document is an **adversarial-style** review of **current** VectorCompiler paths as implemented in-tree: what a motivated abuser might try, what the code **already mitigates**, what remains **risky**, and what would change if you fork the embedding.
+Adversarial-style review of **current** VectorCompiler paths: what a motivated abuser might try, what the code mitigates, what remains risky, and operator mitigations.
 
-**Scope:** Rust sources for `vc-ir`, `vc-lower-wasm`, `vc-verify`, `vc-bridge`, and `vc-cli` at the time of writing. **Out of scope:** Wasmtime’s own bug taxonomy beyond configuration choices made here.
+**Scope:** `vc-ir`, `vc-lower-wasm`, `vc-verify`, `vc-bridge`, `vc-cli`, agent interface (`validate` / `explain` / `fix` / `skills`). **Out of scope:** Wasmtime/Cranelift internals beyond configuration here.
+
+**Companion:** [AGENT_COMPILER_INTERFACE.md](AGENT_COMPILER_INTERFACE.md), [SECURITY.md](SECURITY.md), [FULL_LINE_AUDIT.md](FULL_LINE_AUDIT.md).
 
 ---
 
@@ -10,172 +12,162 @@ This document is an **adversarial-style** review of **current** VectorCompiler p
 
 | Area | Risk | Mitigation today | Residual |
 |------|------|------------------|----------|
-| Malicious `.vcir` | Parser / validation bypass, surprising programs | `serde_json` parse + **`validate_module`** (`MAX_BODY_INSTRS`, **`MAX_PARAMS`**, **`MAX_DECLARED_LOCALS`**); **16 MiB** CLI read cap | JSON parse still allocates within cap; streaming parse not implemented |
-| Malicious Wasm in `run` | Host escape via imports / memory / tables | **`WasmPolicy::default`** rejects imports, memories, tables, **`start`** before **`Module::from_binary`** | **`CompiledModule::new_with_policy`** can widen policy — callers must match threat model |
-| Fuel-only limits | Long compile / instantiate; guest CPU | Fuel during **`func.call`**; **Wasm bytes capped** (`MAX_WASM_BYTES`) | Cranelift compile + instantiation **outside** guest fuel and **`max_wall_ms`** |
-| Bench manifest | Path tricks, huge manifests | **`program_path`** relative to **`benchmarks/`**, no **`..`**; **`canonicalize`** + **`strip_prefix`** guard; case count / arity caps | Untrusted manifests still read local `.vcir` **inside** suite root |
-| `synthesize` / **`vc-refine`** | Search burns CPU; misleading “training” story | **`RandomIrRefiner`** + verifier; **`--refiner-seed`**; seed IR validated | Heuristic search only — not latent decoding |
-| `vc-bridge` / ONNX | Unsafe model load or bad tensor→IR mapping | Stub **fail-closed**; **`OrtLatentDecoder`** validates **`z`** + **`program_ir_json`** then **`validate_module`** | Integration mistakes remain a **policy** problem |
-| Supply chain | Bad dep | Lockfile + **`cargo audit`** (CI, blocking) + **`cargo deny check licenses bans`** | Org SBOM / vendoring not in-repo |
+| Malicious `.vcir` | Parser / validation bypass | `serde_json` + **`validate_module`** caps; **16 MiB** CLI read | JSON parse allocates within cap; no streaming parse |
+| Malicious Wasm in `run` | Host escape via imports / memory | **`WasmPolicy::default`** preflight | Custom policy widens surface; compile/instantiate not fuel-metered |
+| Bench / eval manifests | Path escape, huge manifests | Relative paths, no `..`, **`canonicalize`** + **`strip_prefix`** under repo / `benchmarks/` | Untrusted suite JSON still a **trust** input |
+| `synthesize` / `vc-refine` | CPU burn | Step budget + fuel per case | Heuristic search only |
+| `vc-bridge` / ONNX | Untrusted model / bad IR bytes | Shape checks + **`validate_module`** fail-closed | ORT runtime = trusted code; model path is user-supplied |
+| Agent CLI (`skills`, `explain`) | Oversized tokens, path tricks | Skill **allowlist** + name charset/length; diagnostic code format gate | `explain --all` prints full catalog (bounded, ~15 codes) |
+| `fix --plan` | Misleading auto-repair | **Plan only** — no file writes | Agents must not treat plans as applied fixes |
+| Supply chain | Bad dependency | Lockfile + **`cargo audit`** + **`cargo deny`** in CI | Org SBOM / vendoring not in-repo |
 
 ---
 
-## Path 1: `vc-cli compile`
+## Path 1: `vectorc compile`
 
-**Flow:** read file (bounded) → `Module::parse_json_slice` → `lower_module` (validates internally) → write Wasm.
+**Flow:** bounded read → `parse_json_slice` → `lower_module` (re-validates) → write Wasm.
 
-### Abuse cases
+### Abuse
 
-1. **Huge JSON / deep nesting** — may exhaust memory or CPU in `serde_json` before validation meaningfully runs.
-2. **Valid but enormous IR bodies** — validator walks every instruction once; complexity is linear in body length but constants are not “small-program” enforced.
-3. **Semantically valid “annoying” programs** — e.g., long linear chains of ops that compile to large Wasm **and** burn fuel at runtime.
+- Huge / deeply nested JSON within 16 MiB cap.
+- Valid IR at tier-1 limits still produces large Wasm and slow validation walks.
 
 ### Mitigations
 
-- Structural validation catches **type** and **stack** inconsistencies; empty export name rejected.
-- Lowerer emits **straight-line** Wasm matching IR; no hidden control-flow optimizations.
+- Structural validation; empty export rejected; emit size cap.
 
-### Gaps
+### Residual
 
-- **File size** capped at **16 MiB** for the compile read path; validator bounds (`MAX_BODY_INSTRS`, etc.) still allow worst-case work proportional to those caps.
-- **Compile** does not execute; threat is **DoS against the compiler**, not guest escape.
+- **Compiler DoS** on host CPU/memory within documented caps—not guest escape.
 
 ---
 
-## Path 2: `vc-cli run`
+## Path 2: `vectorc run`
 
-**Flow:** read Wasm bytes → Wasmtime `Module::from_binary` → `Instance::new(&mut store, &module, &[])` → resolve export → `func.call` under fuel.
+**Flow:** bounded read → policy → compile → fuel-metered `call`.
 
-### Abuse cases
+### Abuse
 
-1. **Import-heavy malicious module** — `Instance::new` with `&[]` should **fail** if imports are required; verify error handling in callers (anyhow context) surfaces this clearly to operators.
-2. **Memory bombs** — module declares large linear memory or aggressive growth patterns; still within Wasm semantics; **not** additionally capped here. Under **`WasmPolicy::default()`** (used by **`CompiledModule::new`**), modules with a **memory section are rejected before instantiate** — guests have no linear memory unless policy is widened explicitly.
-3. **Start / constructors** — if future Wasm features or module shapes run more code at instantiate time, **fuel may not cover** all of that the way it covers the explicit `call` path—this is engine-version dependent.
-4. **Export confusion** — wrong `-e` export may call an unintended function **if** the module exports multiple functions with compatible signatures; the CLI only checks name + arity/types at runtime.
+- Untrusted Wasm with custom policy.
+- TOCTOU if path swapped between read and load on hostile FS.
+- Instantiate/compile cost outside guest fuel.
 
 ### Mitigations
 
-- **Fuel** on the store mitigates **infinite** guest loops **after** invocation starts.
-- **Arity and i32-only** restriction reduces accidental broad ABI exposure.
-- Modules **produced by this lowerer** are simple; **import count is zero**—good property for first-party artifacts.
+- Default policy denies imports, memory, tables, start.
+- **`--isolate`** subprocess + timeout for untrusted blobs.
+- Optional **`--wall-ms`** on guest execution.
 
-### Gaps
+### Residual
 
-- **Default-path `run`** goes through **`CompiledModule::new`** → **`WasmPolicy::default`** rejects imports (and memory/tables/start). Callers using **custom policy** must align docs with their embedding.
-- **`run` trusts the path you pass**; swapping binaries on disk between read and load is a **TOCTOU** concern on hostile filesystems.
+- Treat non-repo Wasm as **untrusted**; use isolation + wall-clock.
 
 ---
 
-## Path 3: `vc-cli bench`
+## Path 3: `bench` / `check` / `eval`
 
-**Flow:** read manifest → parse **`BenchManifest`** → **`schema_version == 1`** → resolve **`program_path`** relative to **`benchmarks/`** (parent of **`benchmarks/manifests/`**) → **`canonicalize`** program under suite root → read `.vcir` → **`lower_module`** once → each case **`invoke_i32_return`** under manifest **`fuel`**.
+**Flow:** manifest or spec → resolve paths → lower once (where applicable) → invoke under fuel.
 
-### Abuse cases
+### Abuse
 
-1. **`program_path` escape** — uses `join` under manifest parent; typical `..` segments could reach sibling directories **if** you allow arbitrary manifests. This is **not** a sandbox escape, but it **is** a **read arbitrary local `.vcir`** footgun.
-2. **Many cases / large args vectors** — mitigated by **`MAX_BENCH_CASES`** and **`MAX_PARAMS`** caps in the CLI; still a workload concern at the high bound.
-3. **Re-lowers once per manifest** (not per case) — correct today, but if refactored wrongly, behavior could drift.
+- `program_path` or suite `manifest` escape to read arbitrary `.vcir` / JSON.
+- Huge `cases` arrays (mitigated by **`MAX_BENCH_CASES`**).
 
 ### Mitigations
 
-- `schema_version` gate prevents naive field drift.
-- Execution still uses the same **fuel** / **importless** instantiation as `run`.
+- **`bench`:** `program_path` relative to suite root, no `..`, canonicalize under `benchmarks/`.
+- **`eval`:** suite `manifest` entries must be **relative**, no `..`, canonicalize under **repository root** (2026-05 hardening).
+- **`check`:** user-supplied spec path is explicit trust boundary (bounded read).
 
-### Gaps
+### Residual
 
-- Treat manifests like **code**: run from isolated working directories for untrusted inputs.
-
----
-
-## Path 3b: `vc-cli synthesize`
-
-**Flow:** read behavioral JSON (**`cases`** required; full bench manifests accepted but **`fuel`** / **`program_path`** are ignored) → optional seed `.vcir` → **`RandomIrRefiner`** (`--refiner-seed`) searches mutations verified against **`vc-verify`**.
-
-### Abuse / misuse
-
-1. **CPU burn** — **`--steps`** controls refinement attempts; keep budgets small for CI.
-2. **Spec confusion** — **`cases`** alone define behavior; operators must not assume **`program_path`** constrains synthesis.
+- Do not point **`eval`** at untrusted `suite.json` without reviewing manifest paths.
 
 ---
 
-## Path 4: `vc-bridge` (stub latent decoder)
+## Path 4: `vc-bridge` / ONNX
 
-**Flow:** `StubLatentDecoder::decode_z` checks `z.len() == EMBEDDING_DIM` (256), then **`bail!`** with a message about training / `onnx`.
+**Flow:** `decode_z` → optional ONNX → UTF-8 JSON → **`validate_module`**.
 
-### Abuse cases
+### Abuse
 
-1. **Developer bypass** — future code could “unwrap” stub errors and substitute unsafe defaults—**policy failure**.
-2. **`onnx` feature** — currently a **placeholder** with no `ort` dependency; the risk is **future** integration mistakes (loading arbitrary model paths, enabling threads, GPU providers).
+- Malicious ONNX model (native code in ORT).
+- Adversarial `program_ir_json` bytes (oversized UTF-8 within tensor limits).
 
 ### Mitigations
 
-- Stub is **fail-closed**: no partial modules, no best-effort guessing.
-- Crate forbids `unsafe_code` at the source level (`#![forbid(unsafe_code)]`).
+- Stub/golden fail-closed; ONNX path validates tensor shapes then IR.
+- **`--onnx-model`** is an explicit trusted path (like loading a shared library).
 
-### Gaps
+### Residual
 
-- **No cryptographic binding** between latent input and IR—not a vulnerability, but **downstream systems** must not assume authenticity.
+- No authenticity binding between `z` and IR; training must not trust decode without **`check`/`eval`**.
 
 ---
 
-## Path 5: emitted Wasm from `vc-lower-wasm`
+## Path 5: emitted Wasm (`vc-lower-wasm`)
 
-**Properties (today):**
+First-party modules: no imports, single export, policy-tested in CI.
 
-- Single function type, single function, single export.
-- Instruction mapping is direct; **no imports** section; **no globals**, **no tables**, **no memory** section in the minimal encoder path (verify if you extend the lowerer—adding memory changes everything above).
+**Risk if extended:** memory sections, host imports—would invalidate current threat model.
 
-### Abuse cases (if extended poorly)
+---
 
-1. Introducing **`memory.size` / `memory.grow` patterns** without limits.
-2. Adding **host imports** for “convenience” (prints, time) — instantly widens the attack surface.
+## Path 6: Agent compiler interface (new)
+
+**Flow:** `validate` / `parse` / `explain` / `fix --plan` / `skills` — structured stdout for automation.
+
+### Abuse
+
+1. **`skills get ../../../etc/passwd`** — rejected: fixed allowlist (`language`, `diagnostics`, `limits`, `decoder`) + charset/length on name before lookup.
+2. **`explain` with megabyte code string** — rejected: max length + `VCIR_*` token shape before catalog lookup.
+3. **`parse` on untrusted giant JSON** — same **16 MiB** read cap as other CLI paths (caller passes bytes from `read_bounded`).
+4. **Agents trust `fix --plan` as applied** — policy: plans are hints only; no file mutation.
+5. **`validate` exit code 1** — intentional for CI; stderr may still have `RUST_LOG` noise—use `--json` on stdout.
 
 ### Mitigations
 
-- Keeping the lowerer **minimal** is itself a security feature.
+- Bundled skills via `include_str!` (no runtime path to repo `skills/`).
+- Stable **`VCIR_*`** codes in `vc_ir::diagnostics`.
+- Conformance fixture: `benchmarks/conformance/invalid/return_inside_block.vcir` → **`VCIR_CTL001`**.
+
+### Residual
+
+- Repair plans are **heuristic** (safe vs heuristic `repair.safety`); wrong automated edits remain possible if an agent applies plans blindly.
+- `parse` does **not** validate—agents must call `validate` before `compile`.
 
 ---
 
-## Residual risks (honest list)
+## Residual risks (honest)
 
-1. **Host resource usage** is not fully bounded by **fuel** alone (parse, instantiate, module size).
-2. **`run` on untrusted Wasm** is only as safe as **Wasmtime + your engine config**; this repository does not enable Wasm proposals beyond defaults you inherit.
-3. **IR validation** is **not** a proof of **intent**—only of **internal consistency**.
-4. **`vc-bridge` is not integrated**—so latent → IR threats are **mostly latent** today, but **documentation debt** could make future integration rushed.
-
----
-
-## Recommended hardening backlog (documentation-only)
-
-Prioritize based on your deployment mode (first-party compile vs. user-supplied Wasm):
-
-1. **Operational timeouts** around **`CompiledModule::new`** (compile / instantiate) for adversarial Wasm within **`MAX_WASM_BYTES`**.
-2. **`cargo deny` / SBOM** depth beyond CI warnings — tighten **`multiple-versions`** when Wasmtime upgrades converge transitive crates.
-3. **Streaming JSON parse** for `.vcir` if memory amplification inside serde becomes a concern.
-4. **Pinning** Wasmtime / future ONNX stacks with upgrade policy.
-5. **Golden IR tests** asserting lowered Wasm imports nothing (beyond existing **`WasmPolicy`** tests).
-
-Prior drafts mentioned separate WASM verifier passes — **`WasmPolicy`** + Wasmtime cover default **`run`**; keep **`cargo audit`** for advisory churn while **`cargo deny`** focuses licenses/bans.
-
-Use [SECURITY.md](SECURITY.md) for the baseline threat model and operator checklist.
-
-See also **[FULL_LINE_AUDIT.md](FULL_LINE_AUDIT.md)** for a file-by-file adversarial read of all Rust sources.
+1. Host CPU for parse / Cranelift compile / instantiate not fully bounded by guest fuel.
+2. IR validation ≠ proof of intent—only internal consistency.
+3. ONNX + untrusted Wasm require explicit trust boundaries and ops discipline.
+4. Pre-1.0 diagnostic codes may gain new variants—pin `vectorc` version in agent loops (use `skills get`).
 
 ---
 
-## Follow-up audit (implemented hardening — 2026-05)
+## Hardening backlog
 
-Subagent review + remediation pass tightened the following (see git history):
+| Priority | Item |
+|----------|------|
+| High | Operational timeouts on compile for untrusted Wasm (`run --isolate`, external job limits). |
+| Medium | Streaming JSON parse for `.vcir` if serde amplification becomes measurable. |
+| Medium | Span/offset in diagnostics if IR gets a text surface. |
+| Low | `fix --apply` behind explicit flag (never default). |
 
-| Finding | Mitigation |
-|--------|-------------|
-| `bench` manifest `program_path` / absolute paths | Paths must be relative, **`..`-free**, resolved under **`benchmarks/`**, **`canonicalize`** + **`strip_prefix`** guard. |
-| Unbounded CLI reads | **`MAX_CLI_FILE_BYTES`** (16 MiB) metadata + byte cap on `.vcir` / `.wasm` / manifest reads. |
-| Wasm module size (`run`) | **`MAX_WASM_BYTES`** (16 MiB) enforced before **`Module::from_binary`**. |
-| Fuel vs compile/instantiate cost | Documented in **`vc-verify`**: fuel applies to **guest execution** only; **`CompiledModule`** separates one-time compile from per-case **`invoke`** (bench reuses compiled module). |
-| `StackUnderflow` mislabel on type mismatch | **`ValidationError::StackTypeMismatch`**. |
-| `ort` default `download-binaries` | **`default-features = false`** on optional `ort`; **`OrtLatentDecoder`** no longer calls **`Session::builder`** (no incidental native setup). |
-| CI / reproducibility | **`--locked`** on clippy/test/bench smoke; **`vectorc bench`** + **`json-schema`** fixture job + optional **`cargo deny`** |
-| Verification tests | **`vc-verify/tests/invoke_checks.rs`** — export/arity/zero-fuel/oversize/reuse/**policy (imports/mem/table/start)**/**wall-clock**. |
+---
 
-**Still not solved by fuel alone:** Cranelift compile + instantiation CPU for adversarial modules within the size cap—operational timeouts / separate workers remain the right tool.
+## Implemented hardening (changelog)
+
+| When | Finding | Mitigation |
+|------|---------|------------|
+| 2026-05 | Bench `program_path` escape | Relative, no `..`, under `benchmarks/` |
+| 2026-05 | Unbounded CLI reads | `MAX_CLI_FILE_BYTES` |
+| 2026-05 | Wasm size | `MAX_WASM_BYTES` |
+| 2026-05 | `StackUnderflow` on type mismatch | `StackTypeMismatch` |
+| 2026-05 | Eval absolute suite manifests | Relative only + repo-root canonicalize |
+| 2026-05 | Agent skill / explain injection | Allowlist + token format limits |
+| 2026-05 | Agent interface | `VCIR_*` diagnostics, `fix --plan` (no writes), bundled skills |
+
+**Still not solved by fuel alone:** Cranelift compile + instantiation CPU within size caps.
